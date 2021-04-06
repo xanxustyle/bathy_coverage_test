@@ -1,0 +1,73 @@
+argh @ file:///home/conda/feedstock_root/build_artifacts/argh_1595627874344/work
+atomicwrites @ file:///home/conda/feedstock_root/build_artifacts/atomicwrites_1588182545583/work
+attrs @ file:///home/conda/feedstock_root/build_artifacts/attrs_1605083924122/work
+bokeh @ file:///D:/bld/bokeh_1614595398381/work
+certifi==2020.12.5
+click==7.1.2
+click-log @ file:///home/conda/feedstock_root/build_artifacts/click-log_1598502113992/work
+click-plugins==1.1.1
+cligj @ file:///home/conda/feedstock_root/build_artifacts/cligj_1605902088619/work
+cloudpickle @ file:///home/conda/feedstock_root/build_artifacts/cloudpickle_1598400192773/work
+colorama @ file:///home/conda/feedstock_root/build_artifacts/colorama_1602866480661/work
+cycler==0.10.0
+Cython @ file:///D:/bld/cython_1613867307129/work
+cytoolz==0.11.0
+dask @ file:///home/conda/feedstock_root/build_artifacts/dask-core_1614995065708/work
+distributed @ file:///D:/bld/distributed_1615002763638/work
+elkai==0.1.2
+Fiona==1.8.18
+fsspec @ file:///home/conda/feedstock_root/build_artifacts/fsspec_1614107550004/work
+future @ file:///D:/bld/future_1610147454374/work
+GDAL==3.2.1
+geopandas @ file:///home/conda/feedstock_root/build_artifacts/geopandas_1614589434390/work
+HeapDict==1.0.1
+iniconfig @ file:///home/conda/feedstock_root/build_artifacts/iniconfig_1603384189793/work
+inpoly==0.2.0
+Jinja2 @ file:///home/conda/feedstock_root/build_artifacts/jinja2_1612119311452/work
+joblib @ file:///home/conda/feedstock_root/build_artifacts/joblib_1612898609989/work
+kiwisolver @ file:///D:/bld/kiwisolver_1610099948875/work
+llvmlite==0.36.0
+locket==0.2.0
+MarkupSafe @ file:///D:/bld/markupsafe_1610127683324/work
+matplotlib @ file:///D:/bld/matplotlib-base_1594091905736/work
+more-itertools @ file:///home/conda/feedstock_root/build_artifacts/more-itertools_1612756563342/work
+msgpack @ file:///D:/bld/msgpack-python_1610121836457/work
+munch==2.5.0
+numba @ file:///D:/bld/numba_1615583494326/work
+numpy @ file:///D:/bld/numpy_1616933441329/work
+numpy-indexed==0.3.5
+olefile @ file:///home/conda/feedstock_root/build_artifacts/olefile_1602866521163/work
+packaging @ file:///home/conda/feedstock_root/build_artifacts/packaging_1612459636436/work
+pandas @ file:///D:/bld/pandas_1614698105739/work
+partd==1.1.0
+Pillow @ file:///D:/bld/pillow_1615244206091/work
+pluggy @ file:///D:/bld/pluggy_1610318294270/work
+py @ file:///home/conda/feedstock_root/build_artifacts/py_1607783655754/work
+Pympler @ file:///home/conda/feedstock_root/build_artifacts/pympler_1602713142526/work
+pyparsing==2.4.7
+pyproj @ file:///D:/bld/pyproj_1614935148092/work
+PyQt5==5.12.3
+PyQt5-sip==4.19.18
+PyQtChart==5.12
+PyQtWebEngine==5.12.1
+pytest==6.2.2
+python-dateutil==2.8.1
+pytz @ file:///home/conda/feedstock_root/build_artifacts/pytz_1612179539967/work
+PyYAML==5.4.1
+random2==1.0.1
+Rtree @ file:///D:/bld/rtree_1610147302815/work
+scikit-learn @ file:///D:/bld/scikit-learn_1611079981849/work
+scipy @ file:///C:/bld/scipy_1609458016927/work
+Shapely==1.7.1
+six @ file:///home/conda/feedstock_root/build_artifacts/six_1590081179328/work
+sortedcontainers @ file:///home/conda/feedstock_root/build_artifacts/sortedcontainers_1605110889605/work
+tblib==1.6.0
+threadpoolctl @ file:///tmp/tmp79xdzxkt/threadpoolctl-2.1.0-py3-none-any.whl
+toml @ file:///home/conda/feedstock_root/build_artifacts/toml_1604308577558/work
+toolz @ file:///home/conda/feedstock_root/build_artifacts/toolz_1600973991856/work
+tornado @ file:///D:/bld/tornado_1610094858390/work
+typing-extensions @ file:///home/conda/feedstock_root/build_artifacts/typing_extensions_1602702424206/work
+ufunclab @ git+git://github.com/WarrenWeckesser/ufunclab.git@bb1dfb567a8c5cba150eba371a4c8b0de473bbf1
+watchdog @ file:///D:/bld/watchdog_1614010935255/work
+wincertstore==0.2
+zict==2.0.0
