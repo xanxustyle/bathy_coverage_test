@@ -37,7 +37,7 @@ def nlist2array(nlist):
 
 
 start0 = datetime.now()
-file_path = 'C:/Users/limhs/Desktop/Intern2021/Code/Hob_TasPort'
+file_path = 'C:/Users/limhs/Desktop/Intern2021/Code/TEST'
 jobname = 'testrun'
 feature = 1         # Feature detection [m]
 coverage = 2        # Bathymetric coverage [x100%]
