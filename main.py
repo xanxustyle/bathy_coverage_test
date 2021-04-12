@@ -1,22 +1,40 @@
-import gc
-import os
-from datetime import datetime
 import numpy as np
-from pandas import DataFrame as Df
-from scipy.spatial import KDTree, distance_matrix
+import pandas as pd
 from matplotlib import pyplot as plt
-from matplotlib.patches import Polygon as Polypatch
-from matplotlib.backends.backend_pdf import PdfPages
-from dask import dataframe as Ddf
-from concavehull import ConcaveHull
-from inpoly import inpoly2
-from elkai import solve_float_matrix
-from ufunclab import max_argmax
+from PyQt5 import QtCore
+from PyQt5.QtWidgets import QApplication, QMainWindow  # , QDialog, QMessageBox
+from matplotlib.backends.backend_qt4agg import (FigureCanvasQTAgg as FigCanvas,
+                                                NavigationToolbar2QT as FigNavToolbar)
+from main_window_ui import Ui_MainWindow
+import sys
+from watchdog.events import PatternMatchingEventHandler
+from watchdog.observers import Observer
 
 
-def createbin(xy_pts,edge):
-    xmin, ymin = xy_pts.min(axis=0)
-    xmax, ymax = xy_pts.max(axis=0)
+class Handler(PatternMatchingEventHandler, QtCore.QThread):
+    def __init__(self, watch_signal):
+        super(Handler, self).__init__(patterns=['*.txt'], ignore_directories=True, case_sensitive=True)
+        self.watch_signal = watch_signal
+
+    def on_modified(self, event):
+        """Depending on how Caris process create the file, this might not work.
+        Workaround: Caris create a tmp file while writing, rename it to txt on completion, and use on_moved here"""
+        self.watch_signal.emit(str(event.src_path))
+
+
+class Watcher(QtCore.QThread):
+    watch_signal = QtCore.pyqtSignal(str)
+
+    def __init__(self, watchdir):
+        super(Watcher, self).__init__()
+        self.watchdir = watchdir
+        self.observer = Observer()
+        self.handler = Handler(self.watch_signal)
+        self.observer.schedule(self.handler, self.watchdir, recursive=False)
+        self.observer.start()
+
+
+def createbin(xmin, xmax, ymin, ymax, edge):
     xmin = xmin - 0.0001
     xmax = xmax + edge - (xmax - xmin) % edge
     ymin = ymin - 0.0001
@@ -28,191 +46,131 @@ def createbin(xy_pts,edge):
     return binedge1, binedge2, bin1, bin2
 
 
-def nlist2array(nlist):
-    lens = np.array([len(i) for i in nlist])
-    mask = lens[:, None] > np.arange(lens.max())
-    out = np.full(mask.shape, -1, dtype=int)
-    out[mask] = np.concatenate(nlist)
-    return out
+class Reader(QtCore.QThread):
+    data_signal = QtCore.pyqtSignal(object)
+    bin_signal = QtCore.pyqtSignal(tuple)
+
+    def __init__(self, feature):
+        super().__init__()
+        self.feature = feature
+        self.line_no = 0
+        self.first = True
+        self.bin = ()
+        self.data = []
+
+    @QtCore.pyqtSlot(str)
+    def readline(self, sval):
+        print('Reading', sval)
+        newdata = pd.read_csv(sval, sep=' ', usecols=[0, 1, 2]).to_numpy()
+        self.line_no += 1
+        print(self.line_no, 'lines copied.')
+
+        if self.first:
+            xmin, ymin = newdata[:, :2].min(axis=0) - 1000
+            xmax, ymax = newdata[:, :2].max(axis=0) + 1000
+            self.bin = createbin(xmin, xmax, ymin, ymax, self.feature)
+            self.first = False
+            self.bin_signal.emit(self.bin)
+
+        newdata[:, 0] = np.searchsorted(self.bin[0], newdata[:, 0], side='right')
+        newdata[:, 1] = np.searchsorted(self.bin[1], newdata[:, 1], side='right')
+        newdata = newdata[pd.DataFrame(newdata[:, :2]).drop_duplicates().index]
+        self.data.append(newdata)
+        self.data_signal.emit(self.data)
 
 
-start0 = datetime.now()
-file_path = 'C:/Users/limhs/Desktop/Intern2021/Code/TEST'
-jobname = 'testrun'
-feature = 1         # Feature detection [m]
-coverage = 2        # Bathymetric coverage [x100%]
-boundary_cover = 1  # Minimal coverage from drawing boundary [x100%]
-swath_angle = 110   # Nominal swath angle [deg]
+class Window(QMainWindow, Ui_MainWindow):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setupUi(self)
 
-# Read files
-print('Reading line files...', end=" ")
-data = np.empty((0, 4))
-line_no = 0
-tmp = []
-for file in [f for f in os.listdir(file_path) if f.endswith('.txt')]:
-    tmp.append(Ddf.read_csv(os.path.join(file_path, file), sep=' ', usecols=[0, 1, 2]))
-    tmp[line_no]['Line'] = (tmp[line_no]["Depth"]*np.nan).fillna(line_no)
-    line_no += 1
-# tmp = ddf.read_csv('C:/Users/limhs/Desktop/Intern2021/Code/Hob_TasPort/*.txt', sep=' ', usecols=[0, 1, 2]).compute()
-data = Ddf.concat(tmp).values.compute()
-del tmp
-print(str(line_no) + ' lines copied.')
-print(datetime.now() - start0)
+        self.feature = 1
+        self.bin = ()
+        watchdir = 'C:/Users/limhs/Desktop/Intern2021/Code/TEST_onboard'
+        self.watcher = Watcher(watchdir)
+        self.watcher.start()
+        self.reader = Reader(self.feature)
+        self.watcher.watch_signal.connect(self.reader.readline)
+        self.reader.bin_signal.connect(self.setbin)
+        self.reader.data_signal.connect(self.drawcovermap)
 
-# Create bin
-swath_width = 2 * data[:,2].mean() * np.tan(np.deg2rad(swath_angle / 2))
-binEdge_east, binEdge_north, bin_east, bin_north = createbin(data[:,:2],feature)
+        self.canvas1 = None
+        self.canvas2 = None
+        self.toolbar1 = None
+        self.toolbar2 = None
 
-# Grid data into bin
-print('Gridding data...', end=" ")
-start = datetime.now()
-data[:,0] = np.searchsorted(binEdge_east, data[:,0], side='right')
-data[:,1] = np.searchsorted(binEdge_north, data[:,1], side='right')
-data = data[Df(data[:,[0,1,3]]).drop_duplicates().index]
-print('Done.')
-print(datetime.now() - start)
+    @QtCore.pyqtSlot(tuple)
+    def setbin(self, tup):
+        self.bin = tup
 
-# Compute coverage map
-print('Computing coverage map...', end=" ")
-H = np.histogram2d(data[:,0] - 0.5, data[:,1] - 0.5,
-                   bins=(np.arange(binEdge_east.shape[0]), np.arange(binEdge_north.shape[0])))[0]
-xedge, yedge = np.meshgrid(binEdge_east, binEdge_north)
-print('Done.')
+    @QtCore.pyqtSlot(object)
+    def drawcovermap(self, datalist):
+        data = np.vstack(datalist)
+        hist = np.histogram2d(data[:, 0] - 0.5, data[:, 1] - 0.5, bins=(np.arange(self.bin[0].shape[0]),
+                                                                        np.arange(self.bin[1].shape[0])))[0]
+        xedge, yedge = np.meshgrid(self.bin[0], self.bin[1])
+        fig1 = plt.figure()
+        ax1 = fig1.add_axes((0, 0, 1, 1), xlabel='Easting [m]', ylabel='Northing [m]', title='Coverage Map',
+                            aspect='equal', xticks=[], yticks=[], rasterized=True)
+        ax1.set_xlim(self.bin[2][int(data[:, 0].min()) - 5], self.bin[2][int(data[:, 0].max()) + 5])
+        ax1.set_ylim(self.bin[3][int(data[:, 1].min()) - 5], self.bin[3][int(data[:, 1].max()) + 5])
+        ax1.format_coord = lambda x, y: f"x={x:.2f}, y={y:.2f}"
+        cmax = int(np.max(hist))
+        cmap = plt.get_cmap('viridis', cmax + 1)
+        cmesh = ax1.pcolormesh(xedge, yedge, hist.T, cmap=cmap)
+        cbar = fig1.colorbar(cmesh, ticks=np.linspace(cmax / (cmax + 1) / 2, cmax - cmax / (cmax + 1) / 2, cmax + 1),
+                             aspect=50, location='bottom')
+        cbar.ax.set_xticklabels(np.arange(cmax + 1))
+        ax1.set_position((0.05, 0.1, 0.9, 0.9))
+        cbar.ax.set_position((0.05, 0.03, 0.9, 0.018))
+        self.addplot1(fig1)
+        self.addplotool1()
+        self.addplot2(fig1)
+        self.addplotool2()
 
-# Draw coverage boundary
-print('Drawing coverage boundary...', end=" ")
-hull = ConcaveHull()
-hull_east, hull_north = np.nonzero(H >= boundary_cover)
-hull.loadpoints(np.column_stack((bin_east[hull_east], bin_north[hull_north])))
-hull.calculatehull(tol=(boundary_cover**4)+3)
-boundary_pts = np.column_stack(hull.boundary.exterior.coords.xy)
-print('Done.')
+    def addplot1(self, fig):
+        self.canvas1 = FigCanvas(fig)
+        self.plotLayout1.addWidget(self.canvas1)
+        self.canvas1.draw()
 
-# Select failed grids
-print('Identifing failed grids...', end=" ")
-fail_east, fail_north = np.nonzero(H < coverage)
-fail_pts = np.column_stack((bin_east[fail_east], bin_north[fail_north]))
-fail_pts = fail_pts[inpoly2(fail_pts, boundary_pts)[0]]
-print('Done.')
+    def addplot2(self, fig):
+        self.canvas2 = FigCanvas(fig)
+        self.plotLayout2.addWidget(self.canvas2)
+        self.canvas2.draw()
 
-del fail_east,fail_north,hull_east,hull_north
-gc.collect()
+    def addplotool1(self):
+        self.toolbar1 = FigNavToolbar(self.canvas1,
+                                      self.plotBox1, coordinates=True)
+        self.plotLayout1.addWidget(self.toolbar1)
 
-# Group failed grids
-print('Grouping failed grids...', end=" ")
-r = swath_width / 2
+    def addplotool2(self):
+        self.toolbar2 = FigNavToolbar(self.canvas2,
+                                      self.plotBox2, coordinates=True)
+        self.plotLayout2.addWidget(self.toolbar2)
 
-fbinEdge_east, fbinEdge_north, fbin_east, fbin_north = createbin(fail_pts, r/2)
-fail_tree = KDTree(fail_pts)
-fail_grp = np.column_stack((np.searchsorted(fbinEdge_east, fail_pts[:,0], side='right'),
-                            np.searchsorted(fbinEdge_north, fail_pts[:,1], side='right')))
-fail_grp = fail_grp[Df(fail_grp).drop_duplicates().index].astype(float)
-fail_grp[:,0] = fbin_east[fail_grp[:,0].astype(int)-1]
-fail_grp[:,1] = fbin_north[fail_grp[:,1].astype(int)-1]
-fail_grp = fail_pts[fail_tree.query(fail_grp,workers=-1)[1]]
+    def delplot1(self, ):
+        self.plotLayout1.removeWidget(self.canvas1)
+        self.canvas1.close()
 
-fail_tree = KDTree(fail_grp)
-neighbor = fail_tree.query_ball_tree(fail_tree, r)
-start = datetime.now()
-count_max = fail_grp.shape[0]
-neighbor = nlist2array(neighbor) + 1
-neighbor_max, neighbor_imax = max_argmax(np.count_nonzero(neighbor, axis=1))
-waypt = [fail_grp[neighbor_imax]]
-count = neighbor_max
-while count < count_max:
-    neighbor[np.isin(neighbor, neighbor[neighbor_imax, :])] = 0
-    neighbor_max, neighbor_imax = max_argmax(np.count_nonzero(neighbor, axis=1))
-    waypt.append(fail_grp[neighbor_imax])
-    count += neighbor_max
+    def delplot2(self, ):
+        self.plotLayout2.removeWidget(self.canvas2)
+        self.canvas2.close()
 
-waypt = np.row_stack(waypt)
-print('Done')
-print(datetime.now() - start)
 
-# Find shortest path
-print('Path planning...', end=" ")
-start = datetime.now()
-dist_mat = distance_matrix(waypt, waypt, threshold=1e10)
-best_path = solve_float_matrix(dist_mat, runs=100)
-waypt = waypt[best_path]
-print('Done')
-print(datetime.now() - start)
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    win = Window()
 
-print(datetime.now() - start0)
-fig = plt.figure(figsize=(8, 8))
-axe = fig.add_subplot(111, xlabel='Easting [m]', ylabel='Northing [m]', aspect='equal')
-axe.plot(boundary_pts[:, 0], boundary_pts[:, 1], 'black', linewidth=0.5)
-axe.scatter(fail_pts[:,0], fail_pts[:,1], marker=".", c='r', s=3, linewidths=0.01, zorder=1)
-axe.scatter(waypt[:,0], waypt[:,1], s=10, c='lime', alpha=1)
-axe.plot(waypt[:,0], waypt[:,1], c='lime', alpha=1)
-# # axe.scatter(fail_grp[neighbor[200],0], fail_grp[neighbor[200],1], s=7, c='blue', alpha=1)
-# # axe.scatter(fail_grp[200,0], fail_grp[200,1], s=20, c='lime', alpha=1)
-# from matplotlib.patches import Circle
-# for i in range(waypt.shape[0]):
-#     cir = Circle((waypt[i,0],waypt[i,1]),r,color='blue',fill=False)
-#     axe.add_patch(cir)
-plt.show()
-stop = 0
+    # fig1 = Figure()
+    # ax1f1 = fig1.add_subplot(111)
+    # ax1f1.plot(np.random.rand(5))
+    # fig2 = Figure()
+    # ax1f2 = fig2.add_subplot(111)
+    # ax1f2.plot(np.random.rand(5))
+    # win.addplot1(fig1)
+    # win.addplot2(fig2)
+    # win.addplotool1()
+    # win.addplotool2()
 
-# Write job report
-print('Writing job report...', end=' ')
-report = 'Job name: ' + jobname + '\n' \
-         'Report generated on: ' + str(datetime.now())[:-7] + '\n' \
-         'Survey standards: \n' \
-         '      Feature detection: ' + str(feature) + 'm\n' \
-         '      Bathymetric coverage: ' + str(coverage*100) + '%\n' \
-         'Total lines processed: ' + str(line_no) + '\n' \
-         'Default swath angle: ' + str(swath_angle) + '\N{DEGREE SIGN}\n' \
-         ''
-
-with PdfPages('C:/Users/limhs/Desktop/job_report_' + jobname + '.pdf') as pdf:
-    fig1 = plt.figure(figsize=(8.3, 11.7))
-    ax = fig1.add_subplot(111)
-    ax.spines['bottom'].set_color('white')
-    ax.spines['top'].set_color('white')
-    ax.spines['right'].set_color('white')
-    ax.spines['left'].set_color('white')
-    ax.tick_params(which='both', colors='white')
-    plt.figtext(0.12, 0.9, report, family='calibri', size=15, linespacing=2.5, ha='left', va='top')
-    pdf.savefig()
-    plt.close()
-
-    fig2 = plt.figure(figsize=(8.3, 11.7))
-    gridspec = fig2.add_gridspec(2, 2, width_ratios=[1, 0.04])
-    ax1 = fig2.add_subplot(gridspec[0, 0], xlabel='Easting [m]', ylabel='Northing [m]', aspect='equal', rasterized=True)
-    ax1.get_yaxis().get_major_formatter().set_useOffset(False)
-    ax1.get_yaxis().get_major_formatter().set_scientific(False)
-    cmax = int(np.max(H))
-    cmap = plt.get_cmap('viridis', cmax + 1)
-    cmesh = ax1.pcolormesh(xedge, yedge, H.T, cmap=cmap)
-    ax1.plot(boundary_pts[:, 0], boundary_pts[:, 1], 'black', linewidth=0.5)
-    # ax1.scatter(fail_pts[:, 0], fail_pts[:, 1], s=0.05, c='red', alpha=0.2)
-    ax1.set_anchor((0.8,1))
-    plt.title('Coverage Map')
-    ax2 = fig2.add_subplot(gridspec[0, 1], rasterized=True)
-    cbar = fig2.colorbar(cmesh, cax=ax2,
-                         ticks=np.linspace(cmax/(cmax+1)/2, cmax-cmax/(cmax+1)/2, cmax+1))
-    cbar.ax.set_yticklabels(np.arange(cmax + 1))
-    ax2.set_anchor('W')
-
-    ax3 = fig2.add_subplot(gridspec[1, 0], xlabel='Easting [m]', ylabel='Northing [m]', aspect='equal', rasterized=True)
-    ax3.get_yaxis().get_major_formatter().set_useOffset(False)
-    ax3.get_yaxis().get_major_formatter().set_scientific(False)
-    ax3.plot(boundary_pts[:, 0], boundary_pts[:, 1], 'black', linewidth=0.5)
-    patch = Polypatch(boundary_pts, color='lime', alpha=0.5, zorder=0)
-    ax3.add_patch(patch)
-    ax3.scatter(fail_pts[:,0], fail_pts[:,1], marker=".", c='r', s=3, linewidths=0.01, zorder=1)
-    ax3.set_anchor((0.8,1))
-    plt.title('Accepted regions (green), rejected regions (red)')
-    pdf.savefig(dpi=600)
-    plt.close()
-
-    # PDF metadata
-    d = pdf.infodict()
-    d['Title'] = ''
-    d['Author'] = ''
-    d['Subject'] = ''
-    d['Keywords'] = ''
-    d['CreationDate'] = datetime.now()
-    d['ModDate'] = datetime.today()
-print('Done')
+    win.show()
+    sys.exit(app.exec_())
