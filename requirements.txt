@@ -8,3 +8,5 @@ elkai~=0.1.2
 ufunclab~=0.0.2.dev0
 numba~=0.53.0
 shapely~=1.7.1
+watchdog~=2.0.2
+PyQt~=5.12.3
