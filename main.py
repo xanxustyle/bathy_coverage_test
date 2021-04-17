@@ -2,6 +2,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+from matplotlib.patches import Polygon as Polypatch
 from matplotlib.backends.backend_qt4agg import (FigureCanvasQTAgg as FigCanvas,
                                                 NavigationToolbar2QT as FigNavToolbar)
 from PyQt5 import QtCore
@@ -9,8 +10,27 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog
 import sys
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
-from main_window_ui import Ui_MainWindow
+# from ufunclab import max_argmax, minmax
 from concavehull import ConcaveHull
+from inpoly import inpoly2
+from main_window_ui import Ui_MainWindow
+
+
+def createbin(xymin, xymax, edge):
+    xymin -= 0.0001
+    xymax += edge - (xymax - xymin) % edge
+    binedge1 = np.linspace(xymin[0], xymax[0], num=int(round((xymax[0] - xymin[0]) / edge)) + 1)
+    binedge2 = np.linspace(xymin[1], xymax[1], num=int(round((xymax[1] - xymin[1]) / edge)) + 1)
+    bin1 = binedge1[:-1] + edge / 2
+    bin2 = binedge2[:-1] + edge / 2
+    return binedge1, binedge2, bin1, bin2
+
+
+def getpolyarea(xy):
+    xy_ = xy - xy.mean(axis=0)
+    correction = xy_[-1, 0] * xy_[0, 1] - xy_[-1, 1] * xy_[0, 0]
+    main_area = np.dot(xy_[:-1, 0], xy_[1:, 1]) - np.dot(xy_[:-1, 1], xy_[1:, 0])
+    return 0.5 * np.abs(main_area + correction)
 
 
 class Handler(PatternMatchingEventHandler, QtCore.QThread):
@@ -19,8 +39,8 @@ class Handler(PatternMatchingEventHandler, QtCore.QThread):
         self.watch_signal = watch_signal
 
     def on_modified(self, event):
-        """Depending on how Caris process create the file, this might not work.
-        Workaround: Caris create a tmp file while writing, rename it to txt on completion, and use on_moved here"""
+        """Depending on how Caris process creates the file, this might not work.
+        Solution: Create tmp file when writing, rename to txt on completion, use on_moved and change to dest_path"""
         self.watch_signal.emit(str(event.src_path))
 
 
@@ -36,51 +56,35 @@ class Watcher(QtCore.QThread):
         self.observer.start()
 
 
-def createbin(xmin, xmax, ymin, ymax, edge):
-    xmin = xmin - 0.0001
-    xmax = xmax + edge - (xmax - xmin) % edge
-    ymin = ymin - 0.0001
-    ymax = ymax + edge - (ymax - ymin) % edge
-    binedge1 = np.linspace(xmin, xmax, num=int(round((xmax - xmin) / edge)) + 1)
-    binedge2 = np.linspace(ymin, ymax, num=int(round((ymax - ymin) / edge)) + 1)
-    bin1 = binedge1[:-1] + edge / 2
-    bin2 = binedge2[:-1] + edge / 2
-    return binedge1, binedge2, bin1, bin2
-
-
 class Reader(QtCore.QThread):
-    data_signal = QtCore.pyqtSignal(tuple)
     bin_signal = QtCore.pyqtSignal(tuple)
+    data_signal = QtCore.pyqtSignal(tuple)
 
     def __init__(self, feature, diag):
         super().__init__()
         self.feature = feature
+        self.density = 3
         self.diag = diag
-        self.line_no = 0
+        self.xylim = np.array([[np.inf, np.inf], [-np.inf, -np.inf]])
         self.bin = ()
-        self.data = []
+        self.hist = None
 
     @QtCore.pyqtSlot(str)
     def readline(self, sval):
-        print('Reading', sval)
         newdata = pd.read_csv(sval, sep=' ', usecols=[0, 1, 2]).to_numpy()
-        self.line_no += 1
-        print(self.line_no, 'lines copied.')
+        self.xylim[0, :] = np.minimum(self.xylim[0, :], newdata[:, :2].min(axis=0))
+        self.xylim[1, :] = np.maximum(self.xylim[1, :], newdata[:, :2].max(axis=0))
 
-        if self.line_no == 1:
-            xmin, ymin = newdata[:, :2].min(axis=0) - self.diag
-            xmax, ymax = newdata[:, :2].max(axis=0) + self.diag
-            self.bin = createbin(xmin, xmax, ymin, ymax, self.feature)
+        if self.hist is None:
+            self.bin = createbin(self.xylim[0, :] - self.diag, self.xylim[1, :] + self.diag, self.feature)
             self.bin_signal.emit(self.bin)
+            self.hist = np.where(
+                np.histogram2d(newdata[:, 0], newdata[:, 1], bins=(self.bin[0], self.bin[1]))[0] >= self.density, 1, 0)
+        else:
+            self.hist += np.where(
+                np.histogram2d(newdata[:, 0], newdata[:, 1], bins=(self.bin[0], self.bin[1]))[0] >= self.density, 1, 0)
 
-        newdata[:, 0] = np.searchsorted(self.bin[0], newdata[:, 0], side='right')
-        newdata[:, 1] = np.searchsorted(self.bin[1], newdata[:, 1], side='right')
-        newdata = newdata[pd.DataFrame(newdata[:, :2]).drop_duplicates().index]
-        self.data.append(newdata)
-        np_data = np.vstack(self.data)
-        hist = np.histogram2d(np_data[:, 0] - 0.5, np_data[:, 1] - 0.5, bins=(np.arange(self.bin[0].shape[0]),
-                                                                              np.arange(self.bin[1].shape[0])))[0]
-        self.data_signal.emit((np_data, hist))
+        self.data_signal.emit((self.hist, self.xylim))
 
 
 class Builder(QtCore.QThread):
@@ -105,15 +109,21 @@ class Builder(QtCore.QThread):
 
 class Checker(QtCore.QThread):
     runcheck_signal = QtCore.pyqtSignal(tuple)
-    fail_signal = QtCore.pyqtSignal(tuple)
+    fail_signal = QtCore.pyqtSignal(object)
 
     def __init__(self, _bin):
         super().__init__()
         self.bin = _bin
 
     @QtCore.pyqtSlot(tuple)
-    def checkgrid(self, sval):
-        self.fail_signal.emit(sval)
+    def checkgrid(self, tup):
+        hist = tup[0]
+        boun_xy = tup[1]
+        coverage = tup[2]
+        fail_east, fail_north = np.nonzero(hist < coverage)
+        fail_xy = np.column_stack((self.bin[2][fail_east], self.bin[3][fail_north]))
+        fail_xy = fail_xy[inpoly2(fail_xy, boun_xy)[0]]
+        self.fail_signal.emit(fail_xy)
 
 
 class Planner(QtCore.QThread):
@@ -137,8 +147,11 @@ class Window(QMainWindow, Ui_MainWindow):
         self.builder = None
         self.checker = None
         self.planner = None
+        self.line_no = 0
         self.bin = ()
         self.hist = None
+        self.boundary = None
+        self.failgrid = None
 
         self.inputDirBrowseButton.clicked.connect(self.selectwatchdir)
         self.inputName.setText('Job_' + str(datetime.now())[:-16])
@@ -174,6 +187,12 @@ class Window(QMainWindow, Ui_MainWindow):
                                       title='Grid Compliance', aspect='equal',
                                       xticks=[], yticks=[], rasterized=True)
         self.ax2.set_anchor('C')
+        self.linepatch = Polypatch([[0, 0], [0, 0]], edgecolor='black', facecolor='None', zorder=0)
+        self.ax2.add_patch(self.linepatch)
+        self.polypatch = Polypatch([[0, 0], [0, 0]], edgecolor='None', facecolor='lime', alpha=0.5, zorder=0)
+        self.ax2.add_patch(self.polypatch)
+        self.failpts, = self.ax2.plot([], [], ls='None', marker=".", c='r', ms=3, mew=0.01, zorder=1)
+        self.failtext = plt.figtext(0.52, 0.02, '', figure=self.fig2, ha='center', va='bottom')
         self.ax2.format_coord = lambda x, y: f"x={x:.2f}, y={y:.2f}"
         self.canvas2 = FigCanvas(self.fig2)
         self.plotLayout2.addWidget(self.canvas2)
@@ -207,21 +226,32 @@ class Window(QMainWindow, Ui_MainWindow):
         self.watcher = Watcher(self.inputDir.text())
         self.watcher.start()
         self.reader = Reader(float(self.inputFeature.text()), float(self.inputDiag.text()))
+        self.watcher.watch_signal.connect(self.notifyread)
         self.watcher.watch_signal.connect(self.reader.readline)
         self.reader.bin_signal.connect(self.setbin)
         self.reader.data_signal.connect(self.drawmap)
+        self.consoleBox.appendPlainText('Program started.\nWatching {}'.format(self.inputDir.text()))
 
     def exectask(self):
         self.execButton.setEnabled(False)
         if self.bounGroup.isChecked():
+            self.consoleBox.appendPlainText('Building survey area boundary... ')
             if self.bounRadio.isChecked():
                 self.builder.runbuild_signal.emit((self.hist, self.bounSpinbox.value()))
             elif self.ginputRadio.isChecked():
-                boun_xy = np.asfarray(self.fig1.ginput(-1))
-                self.builder.boun_signal.emit(boun_xy)
+                boun_xy = np.asarray(self.fig1.ginput(-1))
+                if boun_xy.shape[0] > 2:
+                    self.builder.boun_signal.emit(boun_xy)
+                else:
+                    self.consoleBox.appendPlainText('Input boundary ERROR. A minimum of 3 points must be given.')
+                    self.execButton.setEnabled(True)
             else:
                 boun_xy = pd.read_csv(self.bounFileInput.text(), sep=' ', usecols=[0, 1]).to_numpy()
-                self.builder.boun_signal.emit(boun_xy)
+                if boun_xy.shape[0] > 2:
+                    self.builder.boun_signal.emit(boun_xy)
+                else:
+                    self.consoleBox.appendPlainText('Input boundary ERROR. A minimum of 3 points must be given.')
+                    self.execButton.setEnabled(True)
 
         elif not self.bounGroup.isChecked() and self.failGroup.isChecked():
             self.runcheck()
@@ -233,10 +263,19 @@ class Window(QMainWindow, Ui_MainWindow):
             self.execButton.setEnabled(True)
 
     def runcheck(self):
-        self.checker.runcheck_signal.emit(('Checking', 1))
+        self.consoleBox.appendPlainText('Checking grid compliance... ')
+        self.checker.runcheck_signal.emit((self.hist, self.boundary, float(self.inputCoverage.text())))
 
     def runplan(self):
-        self.planner.runplan_signal.emit(('Planning', 1))
+        self.consoleBox.appendPlainText('Planning path for repairing data... ')
+        if self.failgrid.shape[0]>0:
+            self.planner.runplan_signal.emit(('Planning', 1))
+        else:
+            self.consoleBox.appendPlainText('No path planning is required. All grids are compliant.')
+
+    @QtCore.pyqtSlot(str)
+    def notifyread(self, sval):
+        self.consoleBox.appendPlainText('Reading {}... '.format(sval))
 
     @QtCore.pyqtSlot(tuple)
     def setbin(self, tup):
@@ -254,10 +293,15 @@ class Window(QMainWindow, Ui_MainWindow):
 
     @QtCore.pyqtSlot(tuple)
     def drawmap(self, tup):
-        data = tup[0]
-        self.hist = tup[1]
-        self.ax1.set_xlim(self.bin[2][int(data[:, 0].min()) - 5], self.bin[2][int(data[:, 0].max()) + 5])
-        self.ax1.set_ylim(self.bin[3][int(data[:, 1].min()) - 5], self.bin[3][int(data[:, 1].max()) + 5])
+        self.consoleBox.insertPlainText('Done.')
+        self.line_no += 1
+        self.hist = tup[0]
+        xylim = tup[1]
+        self.ax1.set_xlim(xylim[0][0] - 5, xylim[1][0] + 5)
+        self.ax1.set_ylim(xylim[0][1] - 5, xylim[1][1] + 5)
+        self.ax2.set_xlim(xylim[0][0] - 5, xylim[1][0] + 5)
+        self.ax2.set_ylim(xylim[0][1] - 5, xylim[1][1] + 5)
+        self.ax1.set_title('Coverage Map of {} Lines '.format(self.line_no))
         if self.cmesh is None:
             cmax = int(np.max(self.hist))
             self.cmesh = self.ax1.imshow(
@@ -282,16 +326,31 @@ class Window(QMainWindow, Ui_MainWindow):
 
     @QtCore.pyqtSlot(object)
     def drawboun(self, boun_xy):
-        self.ax2.plot(boun_xy[:, 0], boun_xy[:, 1], 'black', linewidth=0.5)
+        self.consoleBox.insertPlainText('Done.')
+        self.boundary = boun_xy
+        # noinspection PyArgumentList
+        self.linepatch.set_xy(boun_xy)
         self.canvas2.draw()
+
         if self.failGroup.isChecked():
             self.runcheck()
         else:
             self.execButton.setEnabled(True)
 
-    @QtCore.pyqtSlot(tuple)
-    def drawfail(self, tup):
-        print(tup)
+    @QtCore.pyqtSlot(object)
+    def drawfail(self, fail_xy):
+        self.consoleBox.insertPlainText('Done.')
+        self.failgrid = fail_xy
+        bounarea = getpolyarea(self.boundary)
+        failarea = fail_xy.shape[0] * (float(self.inputFeature.text()) ** 2)
+        failrate = min(failarea / bounarea, 1)
+        self.failtext.set_text(
+            'Compliant Grids (Green): {:.2%}\nNon-compliant Grids (Red): {:.2%}'.format(1 - failrate, failrate))
+        # noinspection PyArgumentList
+        self.polypatch.set_xy(self.boundary)
+        self.failpts.set_data(fail_xy[:, 0], fail_xy[:, 1])
+        self.canvas2.draw()
+
         if self.ppGroup.isChecked():
             self.runplan()
         else:
