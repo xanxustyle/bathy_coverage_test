@@ -133,7 +133,7 @@ print(datetime.now() - start)
 print('Path planning...', end=" ")
 start = datetime.now()
 dist_mat = distance_matrix(waypt, waypt, threshold=1e10)
-best_path = solve_float_matrix(dist_mat, runs=100)
+best_path = solve_float_matrix(dist_mat, runs=10)
 waypt = waypt[best_path]
 print('Done')
 print(datetime.now() - start)

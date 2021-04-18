@@ -165,6 +165,7 @@ class Ui_MainWindow(object):
         self.ppSpinBox.setMinimum(5)
         self.ppSpinBox.setMaximum(100)
         self.ppSpinBox.setSingleStep(5)
+        self.ppSpinBox.setProperty("value", 10)
         self.ppSpinBox.setObjectName("ppSpinBox")
         self.horizontalLayout_4.addWidget(self.ppSpinBox)
         spacerItem5 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)

@@ -1,6 +1,7 @@
 from datetime import datetime
 import numpy as np
 import pandas as pd
+from scipy.spatial import KDTree, distance_matrix
 from matplotlib import pyplot as plt
 from matplotlib.patches import Polygon as Polypatch
 from matplotlib.backends.backend_qt4agg import (FigureCanvasQTAgg as FigCanvas,
@@ -10,10 +11,11 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog
 import sys
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
-# from ufunclab import max_argmax, minmax
 from concavehull import ConcaveHull
+from elkai import solve_float_matrix
 from inpoly import inpoly2
 from main_window_ui import Ui_MainWindow
+from ufunclab import max_argmax
 
 
 def createbin(xymin, xymax, edge):
@@ -31,6 +33,14 @@ def getpolyarea(xy):
     correction = xy_[-1, 0] * xy_[0, 1] - xy_[-1, 1] * xy_[0, 0]
     main_area = np.dot(xy_[:-1, 0], xy_[1:, 1]) - np.dot(xy_[:-1, 1], xy_[1:, 0])
     return 0.5 * np.abs(main_area + correction)
+
+
+def nlist2array(nlist):
+    lens = np.array([len(i) for i in nlist])
+    mask = lens[:, None] > np.arange(lens.max())
+    out = np.full(mask.shape, -1, dtype=int)
+    out[mask] = np.concatenate(nlist)
+    return out
 
 
 class Handler(PatternMatchingEventHandler, QtCore.QThread):
@@ -60,12 +70,13 @@ class Reader(QtCore.QThread):
     bin_signal = QtCore.pyqtSignal(tuple)
     data_signal = QtCore.pyqtSignal(tuple)
 
-    def __init__(self, feature, diag):
+    def __init__(self, feature, density, diag):
         super().__init__()
         self.feature = feature
-        self.density = 3
+        self.density = density
         self.diag = diag
         self.xylim = np.array([[np.inf, np.inf], [-np.inf, -np.inf]])
+        self.depth = [0, 0]
         self.bin = ()
         self.hist = None
 
@@ -84,7 +95,9 @@ class Reader(QtCore.QThread):
             self.hist += np.where(
                 np.histogram2d(newdata[:, 0], newdata[:, 1], bins=(self.bin[0], self.bin[1]))[0] >= self.density, 1, 0)
 
-        self.data_signal.emit((self.hist, self.xylim))
+        self.depth[0] = (newdata[:, 2].sum() + self.depth[0] * self.depth[1]) / (newdata.shape[0] + self.depth[1])
+        self.depth[1] += newdata.shape[0]
+        self.data_signal.emit((self.hist, self.depth[0], self.xylim))
 
 
 class Builder(QtCore.QThread):
@@ -128,14 +141,44 @@ class Checker(QtCore.QThread):
 
 class Planner(QtCore.QThread):
     runplan_signal = QtCore.pyqtSignal(tuple)
-    plan_signal = QtCore.pyqtSignal(tuple)
+    plan_signal = QtCore.pyqtSignal(object)
 
     def __init__(self):
         super().__init__()
 
     @QtCore.pyqtSlot(tuple)
-    def planpath(self, sval):
-        self.plan_signal.emit(sval)
+    def planpath(self, tup):
+        fail_xy = tup[0]
+        swath_radius = tup[1] * np.tan(np.deg2rad(tup[2] / 2))
+        run_iter = tup[3]
+
+        fbin = createbin(fail_xy.min(axis=0), fail_xy.max(axis=0), swath_radius / 2)
+        fail_tree = KDTree(fail_xy)
+        fail_grp = np.column_stack((np.searchsorted(fbin[0], fail_xy[:, 0], side='right'),
+                                    np.searchsorted(fbin[1], fail_xy[:, 1], side='right')))
+        fail_grp = fail_grp[pd.DataFrame(fail_grp).drop_duplicates().index].astype(float)
+        fail_grp[:, 0] = fbin[2][fail_grp[:, 0].astype(int) - 1]
+        fail_grp[:, 1] = fbin[3][fail_grp[:, 1].astype(int) - 1]
+        fail_grp = fail_xy[fail_tree.query(fail_grp, workers=-1)[1]]
+
+        fail_tree = KDTree(fail_grp)
+        neighbor = fail_tree.query_ball_tree(fail_tree, swath_radius)
+        count_max = fail_grp.shape[0]
+        neighbor = nlist2array(neighbor) + 1
+        neighbor_max, neighbor_imax = max_argmax(np.count_nonzero(neighbor, axis=1))
+        waypt = [fail_grp[neighbor_imax]]
+        count = neighbor_max
+        while count < count_max:
+            neighbor[np.isin(neighbor, neighbor[neighbor_imax, :])] = 0
+            neighbor_max, neighbor_imax = max_argmax(np.count_nonzero(neighbor, axis=1))
+            waypt.append(fail_grp[neighbor_imax])
+            count += neighbor_max
+        waypt = np.row_stack(waypt)
+
+        dist_mat = distance_matrix(waypt, waypt, threshold=1e10)
+        path = solve_float_matrix(dist_mat, runs=run_iter)
+        path.append(0)
+        self.plan_signal.emit(waypt[path])
 
 
 class Window(QMainWindow, Ui_MainWindow):
@@ -148,6 +191,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.checker = None
         self.planner = None
         self.line_no = 0
+        self.depth = 0
         self.bin = ()
         self.hist = None
         self.boundary = None
@@ -157,6 +201,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.inputName.setText('Job_' + str(datetime.now())[:-16])
         self.inputFeature.setText('1')
         self.inputCoverage.setText('2')
+        self.inputDensity.setText('1')
         self.inputDiag.setText('1000')
         self.runButton.setEnabled(False)
         self.inputDir.textChanged.connect(self.enablerun)
@@ -189,10 +234,13 @@ class Window(QMainWindow, Ui_MainWindow):
         self.ax2.set_anchor('C')
         self.linepatch = Polypatch([[0, 0], [0, 0]], edgecolor='black', facecolor='None', zorder=0)
         self.ax2.add_patch(self.linepatch)
-        self.polypatch = Polypatch([[0, 0], [0, 0]], edgecolor='None', facecolor='lime', alpha=0.5, zorder=0)
+        self.polypatch = Polypatch([[0, 0], [0, 0]], edgecolor='None', facecolor='greenyellow', alpha=1, zorder=0)
         self.ax2.add_patch(self.polypatch)
-        self.failpts, = self.ax2.plot([], [], ls='None', marker=".", c='r', ms=3, mew=0.01, zorder=1)
+        self.failplot, = self.ax2.plot([], [], ls='None', marker='.', c='crimson', ms=3.5, mew=0.01, zorder=1,
+                                       label='Fail grids')
         self.failtext = plt.figtext(0.52, 0.02, '', figure=self.fig2, ha='center', va='bottom')
+        self.pathplot, = self.ax2.plot([], [], ls='--', lw=2, marker='o', c='#00ddffff', ms=5, zorder=2,
+                                       label='Path waypoints')
         self.ax2.format_coord = lambda x, y: f"x={x:.2f}, y={y:.2f}"
         self.canvas2 = FigCanvas(self.fig2)
         self.plotLayout2.addWidget(self.canvas2)
@@ -210,10 +258,11 @@ class Window(QMainWindow, Ui_MainWindow):
         self.disablexecute()
 
     def disablexecute(self):
-        self.execButton.setDisabled(
-            (self.bounGroup.isChecked() and self.bounFileRadio.isChecked() and not bool(self.bounFileInput.text())) or
-            (self.failGroup.isChecked() and self.failOutCheckbox.isChecked() and not bool(self.failDir.text())) or
-            (self.ppGroup.isChecked() and self.ppOutCheckbox.isChecked() and not bool(self.ppDir.text())))
+        if len(self.bin) > 0:
+            self.execButton.setDisabled(
+                (self.bounGroup.isChecked() and self.bounFileRadio.isChecked() and not bool(self.bounFileInput.text()))
+                or (self.failGroup.isChecked() and self.failOutCheckbox.isChecked() and not bool(self.failDir.text()))
+                or (self.ppGroup.isChecked() and self.ppOutCheckbox.isChecked() and not bool(self.ppDir.text())))
 
     def runprogram(self):
         self.inputDirBrowseButton.setEnabled(False)
@@ -221,11 +270,13 @@ class Window(QMainWindow, Ui_MainWindow):
         self.inputName.setEnabled(False)
         self.inputFeature.setEnabled(False)
         self.inputCoverage.setEnabled(False)
+        self.inputDensity.setEnabled(False)
         self.inputDiag.setEnabled(False)
         self.runButton.setEnabled(False)
         self.watcher = Watcher(self.inputDir.text())
         self.watcher.start()
-        self.reader = Reader(float(self.inputFeature.text()), float(self.inputDiag.text()))
+        self.reader = Reader(float(self.inputFeature.text()), float(self.inputDensity.text()),
+                             float(self.inputDiag.text()))
         self.watcher.watch_signal.connect(self.notifyread)
         self.watcher.watch_signal.connect(self.reader.readline)
         self.reader.bin_signal.connect(self.setbin)
@@ -268,10 +319,12 @@ class Window(QMainWindow, Ui_MainWindow):
 
     def runplan(self):
         self.consoleBox.appendPlainText('Planning path for repairing data... ')
-        if self.failgrid.shape[0]>0:
-            self.planner.runplan_signal.emit(('Planning', 1))
+        if self.failgrid.shape[0] > 0:
+            self.planner.runplan_signal.emit(
+                (self.failgrid, self.depth, self.swathSpinbox.value(), self.ppSpinBox.value()))
         else:
             self.consoleBox.appendPlainText('No path planning is required. All grids are compliant.')
+            self.execButton.setEnabled(True)
 
     @QtCore.pyqtSlot(str)
     def notifyread(self, sval):
@@ -296,7 +349,8 @@ class Window(QMainWindow, Ui_MainWindow):
         self.consoleBox.insertPlainText('Done.')
         self.line_no += 1
         self.hist = tup[0]
-        xylim = tup[1]
+        self.depth = tup[1]
+        xylim = tup[2]
         self.ax1.set_xlim(xylim[0][0] - 5, xylim[1][0] + 5)
         self.ax1.set_ylim(xylim[0][1] - 5, xylim[1][1] + 5)
         self.ax2.set_xlim(xylim[0][0] - 5, xylim[1][0] + 5)
@@ -348,7 +402,7 @@ class Window(QMainWindow, Ui_MainWindow):
             'Compliant Grids (Green): {:.2%}\nNon-compliant Grids (Red): {:.2%}'.format(1 - failrate, failrate))
         # noinspection PyArgumentList
         self.polypatch.set_xy(self.boundary)
-        self.failpts.set_data(fail_xy[:, 0], fail_xy[:, 1])
+        self.failplot.set_data(fail_xy[:, 0], fail_xy[:, 1])
         self.canvas2.draw()
 
         if self.ppGroup.isChecked():
@@ -356,9 +410,11 @@ class Window(QMainWindow, Ui_MainWindow):
         else:
             self.execButton.setEnabled(True)
 
-    @QtCore.pyqtSlot(tuple)
-    def drawpath(self, tup):
-        print(tup)
+    @QtCore.pyqtSlot(object)
+    def drawpath(self, waypt):
+        self.consoleBox.insertPlainText('Done.')
+        self.pathplot.set_data(waypt[:, 0], waypt[:, 1])
+        self.canvas2.draw()
         self.execButton.setEnabled(True)
 
 
