@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt
 from matplotlib.patches import Polygon as Polypatch
 from matplotlib.backends.backend_qt4agg import (FigureCanvasQTAgg as FigCanvas,
                                                 NavigationToolbar2QT as FigNavToolbar)
-from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThreadPool, QRunnable, QObject
+from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThread
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog
 import sys
 from watchdog.events import PatternMatchingEventHandler
@@ -43,17 +43,6 @@ def nlist2array(nlist):
     return arr
 
 
-class Worker(QRunnable):
-    def __init__(self, fn, *args, **kwargs):
-        super(Worker, self).__init__()
-        self.fn = fn
-        self.args = args
-        self.kwargs = kwargs
-
-    def run(self):
-        self.fn(*self.args, **self.kwargs)
-
-
 class Handler(PatternMatchingEventHandler):
     def __init__(self, watch_signal):
         super(Handler, self).__init__(patterns=['*.txt'], ignore_directories=True, case_sensitive=True)
@@ -65,7 +54,7 @@ class Handler(PatternMatchingEventHandler):
         self.watch_signal.emit(str(event.src_path))
 
 
-class Watcher(QObject):
+class Watcher(QThread):
     watch_signal = pyqtSignal(str)
 
     def __init__(self, watchdir):
@@ -73,18 +62,16 @@ class Watcher(QObject):
         self.watchdir = watchdir
         self.observer = Observer()
         self.handler = Handler(self.watch_signal)
-
-    def startwatch(self):
         self.observer.schedule(self.handler, self.watchdir, recursive=False)
         self.observer.start()
 
 
-class Reader(QObject):
+class Reader(QThread):
     bin_signal = pyqtSignal(tuple)
     data_signal = pyqtSignal(tuple)
 
     def __init__(self, feature, density, diag):
-        super(Reader, self).__init__()
+        super().__init__()
         self.feature = feature
         self.density = density
         self.diag = diag
@@ -113,11 +100,12 @@ class Reader(QObject):
         self.data_signal.emit((self.hist, self.depth[0], self.xylim))
 
 
-class Builder(QObject):
+class Builder(QThread):
+    runbuild_signal = pyqtSignal(tuple)
     boun_signal = pyqtSignal(object)
 
     def __init__(self, _bin):
-        super(Builder, self).__init__()
+        super().__init__()
         self.bin = _bin
 
     @pyqtSlot(tuple)
@@ -132,11 +120,12 @@ class Builder(QObject):
         self.boun_signal.emit(boun_xy)
 
 
-class Checker(QObject):
+class Checker(QThread):
+    runcheck_signal = pyqtSignal(tuple)
     fail_signal = pyqtSignal(object)
 
     def __init__(self, _bin):
-        super(Checker, self).__init__()
+        super().__init__()
         self.bin = _bin
 
     @pyqtSlot(tuple)
@@ -150,11 +139,12 @@ class Checker(QObject):
         self.fail_signal.emit(fail_xy)
 
 
-class Planner(QObject):
+class Planner(QThread):
+    runplan_signal = pyqtSignal(tuple)
     plan_signal = pyqtSignal(object)
 
     def __init__(self):
-        super(Planner, self).__init__()
+        super().__init__()
 
     @pyqtSlot(tuple)
     def planpath(self, tup):
@@ -194,7 +184,6 @@ class Planner(QObject):
 class Window(QMainWindow, Ui_MainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.threadpool = QThreadPool()
         self.setupUi(self)
         self.watcher = None
         self.reader = None
@@ -288,10 +277,10 @@ class Window(QMainWindow, Ui_MainWindow):
         self.reader = Reader(float(self.inputFeature.text()), float(self.inputDensity.text()),
                              float(self.inputDiag.text()))
         self.watcher.watch_signal.connect(self.notifyread)
+        self.watcher.watch_signal.connect(self.reader.readline)
         self.reader.bin_signal.connect(self.setbin)
         self.reader.data_signal.connect(self.drawmap)
-        watch_worker = Worker(self.watcher.startwatch)
-        self.threadpool.start(watch_worker)
+        self.watcher.start()
         self.consoleBox.appendPlainText('Program started.\nWatching {}'.format(self.inputDir.text()))
 
     def exectask(self):
@@ -299,8 +288,7 @@ class Window(QMainWindow, Ui_MainWindow):
         if self.bounGroup.isChecked():
             self.consoleBox.appendPlainText('Building survey area boundary... ')
             if self.bounRadio.isChecked():
-                worker = Worker(self.builder.buildboun, (self.hist, self.bounSpinbox.value()))
-                self.threadpool.start(worker)
+                self.builder.runbuild_signal.emit((self.hist, self.bounSpinbox.value()))
             elif self.ginputRadio.isChecked():
                 boun_xy = np.asarray(self.fig1.ginput(-1))
                 if boun_xy.shape[0] > 2:
@@ -327,26 +315,20 @@ class Window(QMainWindow, Ui_MainWindow):
 
     def runcheck(self):
         self.consoleBox.appendPlainText('Checking grid compliance... ')
-        worker = Worker(self.checker.checkgrid, (self.hist, self.boundary, float(self.inputCoverage.text())))
-        self.threadpool.start(worker)
+        self.checker.runcheck_signal.emit((self.hist, self.boundary, float(self.inputCoverage.text())))
 
     def runplan(self):
         self.consoleBox.appendPlainText('Planning path for repairing data... ')
         if self.failgrid.shape[0] > 0:
-            worker = Worker(self.planner.planpath,
-                            (self.failgrid, self.depth, self.swathSpinbox.value(), self.ppSpinBox.value()))
-            self.threadpool.start(worker)
+            self.planner.runplan_signal.emit(
+                (self.failgrid, self.depth, self.swathSpinbox.value(), self.ppSpinBox.value()))
         else:
             self.consoleBox.appendPlainText('No path planning is required. All grids are compliant.')
-            self.pathplot.set_data([], [])
-            self.canvas2.draw()
             self.execButton.setEnabled(True)
 
     @pyqtSlot(str)
     def notifyread(self, sval):
         self.consoleBox.appendPlainText('Reading {}... '.format(sval))
-        read_worker = Worker(self.reader.readline, sval)
-        self.threadpool.start(read_worker)
 
     @pyqtSlot(tuple)
     def setbin(self, tup):
@@ -354,8 +336,11 @@ class Window(QMainWindow, Ui_MainWindow):
         self.builder = Builder(self.bin)
         self.checker = Checker(self.bin)
         self.planner = Planner()
+        self.builder.runbuild_signal.connect(self.builder.buildboun)
         self.builder.boun_signal.connect(self.drawboun)
+        self.checker.runcheck_signal.connect(self.checker.checkgrid)
         self.checker.fail_signal.connect(self.drawfail)
+        self.planner.runplan_signal.connect(self.planner.planpath)
         self.planner.plan_signal.connect(self.drawpath)
         self.disablexecute()
 
