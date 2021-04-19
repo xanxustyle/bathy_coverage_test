@@ -79,8 +79,8 @@ H = np.histogram2d(data[:,0] - 0.5, data[:,1] - 0.5,
 xedge, yedge = np.meshgrid(binEdge_east, binEdge_north)
 print('Done.')
 
-# Draw coverage boundary
-print('Drawing coverage boundary...', end=" ")
+# Build coverage boundary
+print('Building coverage boundary...', end=" ")
 hull = ConcaveHull()
 hull_east, hull_north = np.nonzero(H >= boundary_cover)
 hull.loadpoints(np.column_stack((bin_east[hull_east], bin_north[hull_north])))
@@ -88,8 +88,8 @@ hull.calculatehull(tol=(boundary_cover**4)+3)
 boundary_pts = np.column_stack(hull.boundary.exterior.coords.xy)
 print('Done.')
 
-# Select failed grids
-print('Identifing failed grids...', end=" ")
+# Select non-compliant grids
+print('Identifing non-compliant grids...', end=" ")
 fail_east, fail_north = np.nonzero(H < coverage)
 fail_pts = np.column_stack((bin_east[fail_east], bin_north[fail_north]))
 fail_pts = fail_pts[inpoly2(fail_pts, boundary_pts)[0]]
@@ -98,8 +98,8 @@ print('Done.')
 del fail_east,fail_north,hull_east,hull_north
 gc.collect()
 
-# Group failed grids
-print('Grouping failed grids...', end=" ")
+# Group non-compliant grids
+print('Grouping non-compliant grids...', end=" ")
 r = swath_width / 2
 
 fbinEdge_east, fbinEdge_north, fbin_east, fbin_north = createbin(fail_pts, r/2)
@@ -133,7 +133,7 @@ print(datetime.now() - start)
 print('Path planning...', end=" ")
 start = datetime.now()
 dist_mat = distance_matrix(waypt, waypt, threshold=1e10)
-best_path = solve_float_matrix(dist_mat, runs=100)
+best_path = solve_float_matrix(dist_mat, runs=10)
 waypt = waypt[best_path]
 print('Done')
 print(datetime.now() - start)
@@ -203,7 +203,7 @@ with PdfPages('C:/Users/limhs/Desktop/job_report_' + jobname + '.pdf') as pdf:
     ax3.add_patch(patch)
     ax3.scatter(fail_pts[:,0], fail_pts[:,1], marker=".", c='r', s=3, linewidths=0.01, zorder=1)
     ax3.set_anchor((0.8,1))
-    plt.title('Accepted regions (green), rejected regions (red)')
+    plt.title('Compliant regions (green). Non-compliant regions (red)')
     pdf.savefig(dpi=600)
     plt.close()
 
