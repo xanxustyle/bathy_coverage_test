@@ -1,22 +1,24 @@
+import os
+import sys
+import time
 from datetime import datetime
 import numpy as np
 import pandas as pd
-from scipy.spatial import KDTree, distance_matrix
-from matplotlib import pyplot as plt
-from matplotlib.patches import Polygon as Polypatch
-from matplotlib.backends.backend_qt4agg import (FigureCanvasQTAgg as FigCanvas,
-                                                NavigationToolbar2QT as FigNavToolbar)
-from matplotlib.backends.backend_pdf import PdfPages
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThreadPool, QRunnable, QObject
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog
-import sys
+from elkai import solve_float_matrix
+from inpoly import inpoly2
+from matplotlib import pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.backends.backend_qt4agg import (FigureCanvasQTAgg as FigCanvas,
+                                                NavigationToolbar2QT as FigNavToolbar)
+from matplotlib.patches import Polygon as Polypatch
+from scipy.spatial import KDTree, distance_matrix
+from ufunclab import max_argmax
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 from concavehull import ConcaveHull
-from elkai import solve_float_matrix
-from inpoly import inpoly2
 from main_window_ui import Ui_MainWindow
-from ufunclab import max_argmax
 
 
 def createbin(xymin, xymax, edge):
@@ -60,7 +62,7 @@ class Handler(PatternMatchingEventHandler):
         super(Handler, self).__init__(patterns=['*.txt'], ignore_directories=True, case_sensitive=True)
         self.watch_signal = watch_signal
 
-    def on_modified(self, event):
+    def on_created(self, event):
         """Depending on how Caris process creates the file, this might not work.
         Solution: Create tmp file when writing, rename to txt on completion, use on_moved and change to dest_path"""
         self.watch_signal.emit(str(event.src_path))
@@ -78,6 +80,11 @@ class Watcher(QObject):
     def startwatch(self):
         self.observer.schedule(self.handler, self.watchdir, recursive=False)
         self.observer.start()
+
+    def prewatch(self, files):
+        for file in files:
+            self.watch_signal.emit(os.path.join(self.watchdir, file))
+            time.sleep(.2)
 
 
 class Reader(QObject):
@@ -377,6 +384,9 @@ class Window(QMainWindow, Ui_MainWindow):
         watchdog_worker = Worker(self.watcher.startwatch)
         self.threadpool.start(watchdog_worker)
         self.consoleBox.appendPlainText('Program started.\nWatching {}'.format(self.inputDir.text()))
+        files = [f for f in os.listdir(self.inputDir.text()) if f.endswith('.txt')]
+        worker = Worker(self.watcher.prewatch, files)
+        self.threadpool.start(worker)
 
     def exectask(self):
         self.execButton.setEnabled(False)
