@@ -6,6 +6,7 @@ from matplotlib import pyplot as plt
 from matplotlib.patches import Polygon as Polypatch
 from matplotlib.backends.backend_qt4agg import (FigureCanvasQTAgg as FigCanvas,
                                                 NavigationToolbar2QT as FigNavToolbar)
+from matplotlib.backends.backend_pdf import PdfPages
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThreadPool, QRunnable, QObject
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog
 import sys
@@ -121,7 +122,7 @@ class Builder(QObject):
         self.bin = _bin
 
     @pyqtSlot(tuple)
-    def buildboun(self, tup):
+    def buildbound(self, tup):
         hist = tup[0]
         boun_cover = tup[1]
         hull = ConcaveHull()
@@ -191,6 +192,56 @@ class Planner(QObject):
         self.plan_signal.emit(waypt[path])
 
 
+class Reporter(QObject):
+    finish_signal = pyqtSignal()
+
+    def __init__(self):
+        super(Reporter, self).__init__()
+
+    def genreport(self):
+        with PdfPages('C:/Users/limhs/Desktop/job_report_' + jobname + '.pdf') as pdf:
+            fig1 = plt.figure(figsize=(8.3, 11.7))
+            ax = fig1.add_subplot(111)
+            ax.spines['bottom'].set_color('white')
+            ax.spines['top'].set_color('white')
+            ax.spines['right'].set_color('white')
+            ax.spines['left'].set_color('white')
+            ax.tick_params(which='both', colors='white')
+            plt.figtext(0.12, 0.9, report, family='calibri', size=15, linespacing=2.5, ha='left', va='top')
+            pdf.savefig()
+            plt.close()
+
+            fig2 = plt.figure(figsize=(8.3, 11.7))
+            gridspec = fig2.add_gridspec(2, 2, width_ratios=[1, 0.04])
+            ax1 = fig2.add_subplot(gridspec[0, 0], xlabel='Easting [m]', ylabel='Northing [m]', aspect='equal',
+                                   rasterized=True)
+            ax1.get_yaxis().get_major_formatter().set_useOffset(False)
+            ax1.get_yaxis().get_major_formatter().set_scientific(False)
+            cmax = int(np.max(H))
+            cmap = plt.get_cmap('viridis', cmax + 1)
+            cmesh = ax1.pcolormesh(xedge, yedge, H.T, cmap=cmap)
+            ax1.set_anchor((0.8, 1))
+            plt.title('Coverage Map')
+            ax2 = fig2.add_subplot(gridspec[0, 1], rasterized=True)
+            cbar = fig2.colorbar(cmesh, cax=ax2,
+                                 ticks=np.linspace(cmax / (cmax + 1) / 2, cmax - cmax / (cmax + 1) / 2, cmax + 1))
+            cbar.ax.set_yticklabels(np.arange(cmax + 1))
+            ax2.set_anchor('W')
+
+            ax3 = fig2.add_subplot(gridspec[1, 0], xlabel='Easting [m]', ylabel='Northing [m]', aspect='equal',
+                                   rasterized=True)
+            ax3.get_yaxis().get_major_formatter().set_useOffset(False)
+            ax3.get_yaxis().get_major_formatter().set_scientific(False)
+            ax3.plot(boundary_pts[:, 0], boundary_pts[:, 1], 'black', linewidth=0.5)
+            patch = Polypatch(boundary_pts, color='lime', alpha=0.5, zorder=0)
+            ax3.add_patch(patch)
+            ax3.scatter(fail_pts[:, 0], fail_pts[:, 1], marker=".", c='r', s=3, linewidths=0.01, zorder=1)
+            ax3.set_anchor((0.8, 1))
+            plt.title('Compliant regions (green). Non-compliant regions (red)')
+            pdf.savefig(dpi=600)
+            plt.close()
+
+
 class Window(QMainWindow, Ui_MainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -218,16 +269,23 @@ class Window(QMainWindow, Ui_MainWindow):
         self.inputDir.textChanged.connect(self.enablerun)
         self.runButton.clicked.connect(self.runprogram)
         self.execButton.setEnabled(False)
-        self.bounFileRadio.toggled.connect(self.disablexecute)
-        self.failOutCheckbox.clicked.connect(self.disablexecute)
-        self.ppOutCheckbox.clicked.connect(self.disablexecute)
-        self.bounFileInput.textChanged.connect(self.disablexecute)
-        self.failDir.textChanged.connect(self.disablexecute)
-        self.ppDir.textChanged.connect(self.disablexecute)
+        self.bounFileBrowseButton.clicked.connect(self.selectbounfile)
+        self.failDirBrowseButton.clicked.connect(self.selectfailoutput)
+        self.ppDirBrowseButton.clicked.connect(self.selectplanoutput)
+        self.bounFileRadio.toggled.connect(self.enablexecute)
+        self.failOutCheckbox.clicked.connect(self.enablexecute)
+        self.ppOutCheckbox.clicked.connect(self.enablexecute)
+        self.bounFileInput.textChanged.connect(self.enablexecute)
+        self.failDir.textChanged.connect(self.enablexecute)
+        self.ppDir.textChanged.connect(self.enablexecute)
         self.bounGroup.clicked.connect(self.clickgroup)
         self.failGroup.clicked.connect(self.clickgroup)
         self.ppGroup.clicked.connect(self.clickgroup)
         self.execButton.clicked.connect(self.exectask)
+        self.reportButton.setEnabled(False)
+        self.reportDirBrowseButton.clicked.connect(self.selectreportoutput)
+        self.reportDir.textChanged.connect(self.enablereport)
+        self.reportButton.clicked.connect(self.run_reporter)
 
         self.fig1 = plt.figure()
         self.ax1 = self.fig1.add_axes((0.07, 0.1, 0.9, 0.85), xlabel='Easting [m]', ylabel='Northing [m]',
@@ -260,20 +318,37 @@ class Window(QMainWindow, Ui_MainWindow):
     def selectwatchdir(self):
         self.inputDir.setText(QFileDialog.getExistingDirectory(self, 'Select Line File Directory'))
 
+    def selectbounfile(self):
+        self.bounFileInput.setText(
+            QFileDialog.getOpenFileName(self, 'Select Boundary Input File', '', 'Text files (*.txt *.csv)')[0])
+
+    def selectfailoutput(self):
+        self.failDir.setText(QFileDialog.getSaveFileName(self, 'Save Non-compliant Grids', '', '(*.wpt)')[0])
+
+    def selectplanoutput(self):
+        self.ppDir.setText(QFileDialog.getSaveFileName(self, 'Save Path Waypoints', '', '(*.wpt)')[0])
+
+    def selectreportoutput(self):
+        self.reportDir.setText(QFileDialog.getSaveFileName(self, 'Save Job Report', '', '(*.pdf)')[0])
+
     def enablerun(self):
         self.runButton.setEnabled(bool(self.inputDir.text()))
 
-    def clickgroup(self):
-        if self.bounGroup.isChecked() and self.ppGroup.isChecked() and not self.failGroup.isChecked():
-            self.failGroup.setChecked(True)
-        self.disablexecute()
-
-    def disablexecute(self):
+    def enablexecute(self):
         if len(self.bin) > 0:
             self.execButton.setDisabled(
                 (self.bounGroup.isChecked() and self.bounFileRadio.isChecked() and not bool(self.bounFileInput.text()))
                 or (self.failGroup.isChecked() and self.failOutCheckbox.isChecked() and not bool(self.failDir.text()))
                 or (self.ppGroup.isChecked() and self.ppOutCheckbox.isChecked() and not bool(self.ppDir.text())))
+
+    def enablereport(self):
+        if self.failgrid is not None:
+            self.reportButton.setEnabled(bool(self.reportDir.text()))
+
+    def clickgroup(self):
+        if self.bounGroup.isChecked() and self.ppGroup.isChecked() and not self.failGroup.isChecked():
+            self.failGroup.setChecked(True)
+        self.enablexecute()
 
     def runprogram(self):
         self.inputDirBrowseButton.setEnabled(False)
@@ -287,50 +362,50 @@ class Window(QMainWindow, Ui_MainWindow):
         self.watcher = Watcher(self.inputDir.text())
         self.reader = Reader(float(self.inputFeature.text()), float(self.inputDensity.text()),
                              float(self.inputDiag.text()))
-        self.watcher.watch_signal.connect(self.notifyread)
+        self.watcher.watch_signal.connect(self.run_reader)
         self.reader.bin_signal.connect(self.setbin)
         self.reader.data_signal.connect(self.drawmap)
-        watch_worker = Worker(self.watcher.startwatch)
-        self.threadpool.start(watch_worker)
+        watchdog_worker = Worker(self.watcher.startwatch)
+        self.threadpool.start(watchdog_worker)
         self.consoleBox.appendPlainText('Program started.\nWatching {}'.format(self.inputDir.text()))
 
     def exectask(self):
         self.execButton.setEnabled(False)
         if self.bounGroup.isChecked():
-            self.consoleBox.appendPlainText('Building survey area boundary... ')
-            if self.bounRadio.isChecked():
-                worker = Worker(self.builder.buildboun, (self.hist, self.bounSpinbox.value()))
-                self.threadpool.start(worker)
-            elif self.ginputRadio.isChecked():
-                boun_xy = np.asarray(self.fig1.ginput(-1))
-                if boun_xy.shape[0] > 2:
-                    self.builder.boun_signal.emit(boun_xy)
-                else:
-                    self.consoleBox.appendPlainText('Input boundary ERROR. A minimum of 3 points must be given.')
-                    self.execButton.setEnabled(True)
-            else:
-                boun_xy = pd.read_csv(self.bounFileInput.text(), sep=' ', usecols=[0, 1]).to_numpy()
-                if boun_xy.shape[0] > 2:
-                    self.builder.boun_signal.emit(boun_xy)
-                else:
-                    self.consoleBox.appendPlainText('Input boundary ERROR. A minimum of 3 points must be given.')
-                    self.execButton.setEnabled(True)
-
+            self.run_builder()
         elif not self.bounGroup.isChecked() and self.failGroup.isChecked():
-            self.runcheck()
-
+            self.run_checker()
         elif not self.bounGroup.isChecked() and not self.failGroup.isChecked() and self.ppGroup.isChecked():
-            self.runplan()
-
+            self.run_planner()
         else:
-            self.execButton.setEnabled(True)
+            self.enablexecute()
 
-    def runcheck(self):
+    def run_builder(self):
+        self.consoleBox.appendPlainText('Building survey area boundary... ')
+        if self.bounRadio.isChecked():
+            worker = Worker(self.builder.buildbound, (self.hist, self.bounSpinbox.value()))
+            self.threadpool.start(worker)
+        elif self.ginputRadio.isChecked():
+            boun_xy = np.asarray(self.fig1.ginput(-1))
+            if boun_xy.shape[0] > 2:
+                self.builder.boun_signal.emit(boun_xy)
+            else:
+                self.consoleBox.appendPlainText('Input boundary ERROR. A minimum of 3 points must be given.')
+                self.enablexecute()
+        else:
+            boun_xy = pd.read_csv(self.bounFileInput.text(), sep=' ', usecols=[0, 1]).to_numpy()
+            if boun_xy.shape[0] > 2:
+                self.builder.boun_signal.emit(boun_xy)
+            else:
+                self.consoleBox.appendPlainText('Input boundary ERROR. A minimum of 3 points must be given.')
+                self.enablexecute()
+
+    def run_checker(self):
         self.consoleBox.appendPlainText('Checking grid compliance... ')
         worker = Worker(self.checker.checkgrid, (self.hist, self.boundary, float(self.inputCoverage.text())))
         self.threadpool.start(worker)
 
-    def runplan(self):
+    def run_planner(self):
         self.consoleBox.appendPlainText('Planning path for repairing data... ')
         if self.failgrid.shape[0] > 0:
             worker = Worker(self.planner.planpath,
@@ -340,13 +415,18 @@ class Window(QMainWindow, Ui_MainWindow):
             self.consoleBox.appendPlainText('No path planning is required. All grids are compliant.')
             self.pathplot.set_data([], [])
             self.canvas2.draw()
-            self.execButton.setEnabled(True)
+            self.enablexecute()
+
+    def run_reporter(self):
+        self.consoleBox.appendPlainText('Writing job report... ')
+        # worker = Worker(self.reporter, ())
+        # self.threadpool.start(worker)
 
     @pyqtSlot(str)
-    def notifyread(self, sval):
+    def run_reader(self, sval):
         self.consoleBox.appendPlainText('Reading {}... '.format(sval))
-        read_worker = Worker(self.reader.readline, sval)
-        self.threadpool.start(read_worker)
+        worker = Worker(self.reader.readline, sval)
+        self.threadpool.start(worker)
 
     @pyqtSlot(tuple)
     def setbin(self, tup):
@@ -354,23 +434,23 @@ class Window(QMainWindow, Ui_MainWindow):
         self.builder = Builder(self.bin)
         self.checker = Checker(self.bin)
         self.planner = Planner()
-        self.builder.boun_signal.connect(self.drawboun)
+        self.builder.boun_signal.connect(self.drawbound)
         self.checker.fail_signal.connect(self.drawfail)
         self.planner.plan_signal.connect(self.drawpath)
-        self.disablexecute()
+        self.enablexecute()
 
     @pyqtSlot(tuple)
     def drawmap(self, tup):
-        self.consoleBox.insertPlainText('Done.')
-        self.line_no += 1
         self.hist = tup[0]
         self.depth = tup[1]
         xylim = tup[2]
+        self.line_no += 1
+        self.consoleBox.appendPlainText('Loaded {} lines to coverage map.'.format(self.line_no))
         self.ax1.set_xlim(xylim[0][0] - 5, xylim[1][0] + 5)
         self.ax1.set_ylim(xylim[0][1] - 5, xylim[1][1] + 5)
         self.ax2.set_xlim(xylim[0][0] - 5, xylim[1][0] + 5)
         self.ax2.set_ylim(xylim[0][1] - 5, xylim[1][1] + 5)
-        self.ax1.set_title('Coverage Map of {} Lines '.format(self.line_no))
+        self.ax1.set_title('Coverage Map of {} Lines'.format(self.line_no))
         if self.cmesh is None:
             cmax = int(np.max(self.hist))
             self.cmesh = self.ax1.imshow(
@@ -394,7 +474,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.canvas1.draw()
 
     @pyqtSlot(object)
-    def drawboun(self, boun_xy):
+    def drawbound(self, boun_xy):
         self.consoleBox.insertPlainText('Done.')
         self.boundary = boun_xy
         # noinspection PyArgumentList
@@ -402,9 +482,9 @@ class Window(QMainWindow, Ui_MainWindow):
         self.canvas2.draw()
 
         if self.failGroup.isChecked():
-            self.runcheck()
+            self.run_checker()
         else:
-            self.execButton.setEnabled(True)
+            self.enablexecute()
 
     @pyqtSlot(object)
     def drawfail(self, fail_xy):
@@ -420,17 +500,25 @@ class Window(QMainWindow, Ui_MainWindow):
         self.failplot.set_data(fail_xy[:, 0], fail_xy[:, 1])
         self.canvas2.draw()
 
+        if self.failOutCheckbox.isChecked():
+            np.savetxt(self.failDir.text(), self.failgrid, fmt='%.3f', header='Easting Northing', comments='')
+
         if self.ppGroup.isChecked():
-            self.runplan()
+            self.run_planner()
         else:
-            self.execButton.setEnabled(True)
+            self.enablexecute()
+        self.enablereport()
 
     @pyqtSlot(object)
     def drawpath(self, waypt):
         self.consoleBox.insertPlainText('Done.')
         self.pathplot.set_data(waypt[:, 0], waypt[:, 1])
         self.canvas2.draw()
-        self.execButton.setEnabled(True)
+
+        if self.ppOutCheckbox.isChecked():
+            np.savetxt(self.ppDir.text(), waypt, fmt='%.3f', header='Easting Northing', comments='')
+
+        self.enablexecute()
 
 
 if __name__ == '__main__':
