@@ -4,6 +4,7 @@ import time
 from datetime import datetime
 import numpy as np
 import pandas as pd
+# from PyQt5.QtGui import QFont
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThreadPool, QRunnable, QObject
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog
 from elkai import solve_float_matrix
@@ -84,7 +85,7 @@ class Watcher(QObject):
     def prewatch(self, files):
         for file in files:
             self.watch_signal.emit(os.path.join(self.watchdir, file))
-            time.sleep(.2)
+            time.sleep(.5)
 
 
 class Reader(QObject):
@@ -553,6 +554,7 @@ class Window(QMainWindow, Ui_MainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    # app.setFont(QFont('Calibri', 12))
     win = Window()
     win.show()
     sys.exit(app.exec_())
