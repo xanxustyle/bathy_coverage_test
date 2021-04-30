@@ -1,17 +1,21 @@
+from PIL import Image
+import io
 import gc
 import os
 from datetime import datetime
 import numpy as np
+import pandas as pd
 from pandas import DataFrame as Df
 from scipy.spatial import KDTree, distance_matrix
 from matplotlib import pyplot as plt
 from matplotlib.patches import Polygon as Polypatch
 from matplotlib.backends.backend_pdf import PdfPages
-from dask import dataframe as Ddf
+# from dask import dataframe as Ddf
 from concavehull import ConcaveHull
 from inpoly import inpoly2
 from elkai import solve_float_matrix
 from ufunclab import max_argmax
+from osgeo import gdal, osr
 
 
 def createbin(xy_pts, edge):
@@ -50,11 +54,12 @@ data = np.empty((0, 4))
 line_no = 0
 tmp = []
 for file in [f for f in os.listdir(file_path) if f.endswith('.txt')]:
-    tmp.append(Ddf.read_csv(os.path.join(file_path, file), sep=' ', usecols=[0, 1, 2]))
+    tmp.append(pd.read_csv(os.path.join(file_path, file), sep=' ', usecols=[0, 1, 2]))
     tmp[line_no]['Line'] = (tmp[line_no]["Depth"] * np.nan).fillna(line_no)
     line_no += 1
 # tmp = ddf.read_csv('C:/Users/limhs/Desktop/Intern2021/Code/Hob_TasPort/*.txt', sep=' ', usecols=[0, 1, 2]).compute()
-data = Ddf.concat(tmp).values.compute()
+# data = Ddf.concat(tmp).values.compute()
+data = pd.concat(tmp).to_numpy()
 del tmp
 print(str(line_no) + ' lines copied.')
 print(datetime.now() - start0)
@@ -137,6 +142,28 @@ waypt = waypt[best_path]
 print('Done')
 print(datetime.now() - start)
 print(datetime.now() - start0)
+
+# xmin = boundary_pts[:, 0].min()
+# xmax = boundary_pts[:, 0].max()
+# ymin = boundary_pts[:, 1].min()
+# ymax = boundary_pts[:, 1].max()
+# fig = plt.figure(figsize=((xmax-xmin)/(xmax-xmin),(ymax-ymin)/(xmax-xmin)),frameon=False)
+# ax = fig.add_axes((0, 0, 1, 1), xlabel='Easting [m]', ylabel='Northing [m]', aspect='equal')
+# ax.set_axis_off()
+# ax.set_xlim(xmin, xmax)
+# ax.set_ylim(ymin, ymax)
+# patch = Polypatch(boundary_pts, edgecolor='black', facecolor='lime', alpha=0.5, zorder=0)
+# ax.add_patch(patch)
+# ax.scatter(fail_pts[:, 0], fail_pts[:, 1], marker=".", c='r', s=3, linewidths=0.01, zorder=1)
+# fig.savefig(file_path + '/test5.tif',dpi=300)
+# oritif = gdal.Open('C:/Users/limhs/Desktop/Intern2021/Code/TEST/test5.tif', gdal.GA_Update)
+# sr = osr.SpatialReference()
+# sr.ImportFromEPSG(32755)
+# oritif.SetProjection(sr.ExportToWkt())
+# oritif.SetGeoTransform([xmin, (xmax - xmin)/300, 0, ymax, 0, -(ymax - ymin)/480])
+# oritif.FlushCache()
+# oritif = None
+
 
 stop = 0
 
