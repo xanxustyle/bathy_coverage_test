@@ -4,21 +4,24 @@ import time
 from datetime import datetime
 import numpy as np
 import pandas as pd
-# from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThreadPool, QRunnable, QObject
-from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog
+from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QDialog, QDialogButtonBox
 from elkai import solve_float_matrix
 from inpoly import inpoly2
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.backends.backend_qt4agg import (FigureCanvasQTAgg as FigCanvas,
+from matplotlib.backends.backend_qt5agg import (FigureCanvasQTAgg as FigCanvas,
                                                 NavigationToolbar2QT as FigNavToolbar)
+from matplotlib.figure import Figure
 from matplotlib.patches import Polygon as Polypatch
+from osgeo import gdal, osr
 from scipy.spatial import KDTree, distance_matrix
 from ufunclab import max_argmax
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 from concavehull import ConcaveHull
+from epsg_dialog_ui import Ui_Dialog
 from main_window_ui import Ui_MainWindow
 
 
@@ -66,6 +69,7 @@ class Handler(PatternMatchingEventHandler):
     def on_created(self, event):
         """Depending on how Caris process creates the file, this might not work.
         Solution: Create tmp file when writing, rename to txt on completion, use on_moved and change to dest_path"""
+        time.sleep(30)
         self.watch_signal.emit(str(event.src_path))
 
 
@@ -135,7 +139,7 @@ class Builder(QObject):
         hull = ConcaveHull()
         hull_east, hull_north = np.nonzero(hist >= boun_cover)
         hull.loadpoints(np.column_stack((self.bin[2][hull_east], self.bin[3][hull_north])))
-        hull.calculatehull(tol=(boun_cover ** 4) + 3)
+        hull.calculatehull(tol=2)
         boun_xy = np.column_stack(hull.boundary.exterior.coords.xy)
         self.boun_signal.emit(boun_xy)
 
@@ -207,18 +211,19 @@ class Reporter(QObject):
     def genreport(self, tup):
         info, hist, xybin, xylim, boun, fail, file = tup
         with PdfPages(file) as pdf:
-            fig1 = plt.figure(figsize=(8.3, 11.7))
+            fig1 = Figure(figsize=(8.3, 11.7))
             ax = fig1.add_subplot(111)
             ax.spines['bottom'].set_color('white')
             ax.spines['top'].set_color('white')
             ax.spines['right'].set_color('white')
             ax.spines['left'].set_color('white')
             ax.tick_params(which='both', colors='white')
-            plt.figtext(0.12, 0.9, info, family='calibri', size=15, linespacing=2.5, ha='left', va='top')
-            pdf.savefig()
+            fig1.text(0.12, 0.9, info, transform=fig1.transFigure, family='calibri', size=15, linespacing=2.5,
+                      ha='left', va='top')
+            pdf.savefig(fig1)
             plt.close()
 
-            fig2 = plt.figure(figsize=(8.3, 11.7))
+            fig2 = Figure(figsize=(8.3, 11.7))
             gridspec = fig2.add_gridspec(2, 2, width_ratios=[1, 0.04])
             ax1 = fig2.add_subplot(gridspec[0, 0], xlabel='Easting [m]', ylabel='Northing [m]', title='Coverage Map',
                                    aspect='equal')
@@ -237,7 +242,6 @@ class Reporter(QObject):
                                  ticks=np.linspace(cmax / (cmax + 1) / 2, cmax - cmax / (cmax + 1) / 2, cmax + 1))
             cbar.ax.set_yticklabels(np.arange(cmax + 1))
             ax2.set_anchor('W')
-
             ax3 = fig2.add_subplot(gridspec[1, 0], xlabel='Easting [m]', ylabel='Northing [m]', title='Grid Compliance',
                                    aspect='equal')
             ax3.set_xlim(xylim[0][0] - 5, xylim[1][0] + 5)
@@ -248,24 +252,43 @@ class Reporter(QObject):
             ax3.get_yaxis().get_major_formatter().set_scientific(False)
             patch = Polypatch(boun, edgecolor='black', facecolor='lawngreen', lw=0.5, alpha=0.9, zorder=0)
             ax3.add_patch(patch)
-            ax3.scatter(fail[:, 0], fail[:, 1], marker=".", c='r', s=3, linewidths=0.01, zorder=1)
+            ax3.scatter(fail[:, 0], fail[:, 1], marker="s", c='r', s=1, lw=0, zorder=1)
             ax3.set_anchor((0.8, 1))
-            pdf.savefig()
+            pdf.savefig(fig2)
             plt.close()
         self.end_signal.emit()
+
+
+class EpsgDialog(QDialog, Ui_Dialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setupUi(self)
+        self.epsg = osr.SpatialReference()
+        self.epsg.ImportFromEPSG(self.spinBox.value())
+        self.textEdit.setPlainText(self.epsg.GetName())
+        self.spinBox.valueChanged.connect(self.check_epsg)
+
+    def check_epsg(self):
+        self.epsg.ImportFromEPSG(self.spinBox.value())
+        self.buttonBox.button(QDialogButtonBox.Ok).setEnabled(bool(self.epsg.GetName()))
+        if bool(self.epsg.GetName()):
+            self.textEdit.setPlainText(self.epsg.GetName())
+        else:
+            self.textEdit.setPlainText('EPSG not found.')
 
 
 class Window(QMainWindow, Ui_MainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.threadpool = QThreadPool()
         self.setupUi(self)
+        self.threadpool = QThreadPool()
         self.watcher = None
         self.reader = None
         self.builder = None
         self.checker = None
         self.planner = Planner()
         self.reporter = Reporter()
+        self.dialog = EpsgDialog(self)
 
         self.line_no = 0
         self.depth = 0
@@ -277,10 +300,6 @@ class Window(QMainWindow, Ui_MainWindow):
 
         self.inputDirBrowseButton.clicked.connect(self.selectwatchdir)
         self.inputName.setText('Job_' + str(datetime.now())[:-16])
-        self.inputFeature.setText('1')
-        self.inputCoverage.setText('1')
-        self.inputDensity.setText('1')
-        self.inputDiag.setText('1000')
         self.runButton.setEnabled(False)
         self.inputDir.textChanged.connect(self.enablerun)
         self.runButton.clicked.connect(self.runprogram)
@@ -304,7 +323,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.reportButton.clicked.connect(self.run_reporter)
         self.reporter.end_signal.connect(self.endreport)
 
-        self.fig1 = plt.figure()
+        self.fig1 = Figure()
         self.ax1 = self.fig1.add_axes((0.07, 0.1, 0.9, 0.85), xlabel='Easting [m]', ylabel='Northing [m]',
                                       title='Coverage Map', aspect='equal', xticks=[], yticks=[], rasterized=True)
         self.ax1.format_coord = lambda x, y: f"x={x:.2f}, y={y:.2f}"
@@ -313,7 +332,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.canvas1 = FigCanvas(self.fig1)
         self.plotLayout1.addWidget(self.canvas1)
         self.plotLayout1.addWidget(FigNavToolbar(self.canvas1, self.plotBox1, coordinates=True))
-        self.fig2 = plt.figure()
+        self.fig2 = Figure()
         self.ax2 = self.fig2.add_axes((0.07, 0.1, 0.9, 0.85), xlabel='Easting [m]', ylabel='Northing [m]',
                                       title='Grid Compliance', aspect='equal',
                                       xticks=[], yticks=[], rasterized=True)
@@ -322,9 +341,9 @@ class Window(QMainWindow, Ui_MainWindow):
         self.ax2.add_patch(self.linepatch)
         self.polypatch = Polypatch([[0, 0], [0, 0]], edgecolor='None', facecolor='lawngreen', alpha=0.9, zorder=0)
         self.ax2.add_patch(self.polypatch)
-        self.failplot, = self.ax2.plot([], [], ls='None', marker='.', c='crimson', ms=4, mew=0.01, zorder=1,
+        self.failplot, = self.ax2.plot([], [], ls='None', marker='s', c='red', ms=2, mew=0, zorder=1,
                                        label='Fail grids')
-        self.failtext = plt.figtext(0.52, 0.02, '', figure=self.fig2, ha='center', va='bottom')
+        self.failtext = self.fig2.text(0.52, 0.02, '', transform=self.fig2.transFigure, ha='center', va='bottom')
         self.pathplot, = self.ax2.plot([], [], ls='--', lw=1.5, marker='o', c='black', ms=5, zorder=2,
                                        label='Path waypoints')
         self.ax2.format_coord = lambda x, y: f"x={x:.2f}, y={y:.2f}"
@@ -337,13 +356,16 @@ class Window(QMainWindow, Ui_MainWindow):
 
     def selectbounfile(self):
         self.bounFileInput.setText(
-            QFileDialog.getOpenFileName(self, 'Select Boundary Input File', '', 'Text files (*.txt *.csv)')[0])
+            QFileDialog.getOpenFileName(self, 'Select Boundary Input File', '', 'ASCII text (*.txt *.csv)')[0])
 
     def selectfailoutput(self):
-        self.failDir.setText(QFileDialog.getSaveFileName(self, 'Save Non-compliant Grids', '', '(*.wpt)')[0])
+        self.failDir.setText(
+            QFileDialog.getSaveFileName(self, 'Save Non-compliant Grids', '',
+                                        'Geotiff image (*.tif)\n Caris waypoints (*.wpt)\n ASCII text (*.txt)')[0])
 
     def selectplanoutput(self):
-        self.ppDir.setText(QFileDialog.getSaveFileName(self, 'Save Path Waypoints', '', '(*.wpt)')[0])
+        self.ppDir.setText(QFileDialog.getSaveFileName(self, 'Save Path Waypoints', '',
+                                                       'Caris waypoints (*.wpt)\n ASCII text (*.txt)')[0])
 
     def selectreportoutput(self):
         self.reportDir.setText(QFileDialog.getSaveFileName(self, 'Save Job Report', '', '(*.pdf)')[0])
@@ -372,13 +394,11 @@ class Window(QMainWindow, Ui_MainWindow):
         self.inputDir.setEnabled(False)
         self.inputName.setEnabled(False)
         self.inputFeature.setEnabled(False)
-        self.inputCoverage.setEnabled(False)
         self.inputDensity.setEnabled(False)
         self.inputDiag.setEnabled(False)
         self.runButton.setEnabled(False)
         self.watcher = Watcher(self.inputDir.text())
-        self.reader = Reader(float(self.inputFeature.text()), float(self.inputDensity.text()),
-                             float(self.inputDiag.text()))
+        self.reader = Reader(self.inputFeature.value(), self.inputDensity.value(), self.inputDiag.value())
         self.watcher.watch_signal.connect(self.run_reader)
         self.reader.bin_signal.connect(self.setbin)
         self.reader.data_signal.connect(self.drawmap)
@@ -391,6 +411,12 @@ class Window(QMainWindow, Ui_MainWindow):
 
     def exectask(self):
         self.execButton.setEnabled(False)
+        if self.failGroup.isChecked() and self.failOutCheckbox.isChecked() and self.failDir.text()[-3:] == 'tif':
+            self.dialog.exec()
+            if self.dialog.result() == 0:
+                self.consoleBox.appendPlainText('Try again. No EPSG code was given.')
+                self.enabletask()
+                return
         if self.bounGroup.isChecked():
             self.run_builder()
         elif not self.bounGroup.isChecked() and self.failGroup.isChecked():
@@ -411,7 +437,7 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.builder.boun_signal.emit(boun_xy)
             else:
                 self.consoleBox.appendPlainText('Input boundary ERROR. A minimum of 3 points must be given.')
-                self.enabletask()
+            self.enabletask()
         else:
             boun_xy = pd.read_csv(self.bounFileInput.text(), sep=' ', usecols=[0, 1]).to_numpy()
             if boun_xy.shape[0] > 2:
@@ -422,19 +448,27 @@ class Window(QMainWindow, Ui_MainWindow):
 
     def run_checker(self):
         self.consoleBox.appendPlainText('Checking grid compliance... ')
-        worker = Worker(self.checker.checkgrid, (self.hist, self.boundary, float(self.inputCoverage.text())))
-        self.threadpool.start(worker)
+        if self.boundary is not None:
+            worker = Worker(self.checker.checkgrid, (self.hist, self.boundary, self.inputCoverage.value()))
+            self.threadpool.start(worker)
+        else:
+            self.consoleBox.appendPlainText('Fail to check compliance. Boundary must be built first.')
+            self.enabletask()
 
     def run_planner(self):
         self.consoleBox.appendPlainText('Planning path for repairing data... ')
-        if self.failgrid.shape[0] > 0:
-            worker = Worker(self.planner.planpath,
-                            (self.failgrid, self.depth, self.swathSpinbox.value(), self.ppSpinBox.value()))
-            self.threadpool.start(worker)
+        if self.failgrid is not None:
+            if self.failgrid.shape[0] > 0:
+                worker = Worker(self.planner.planpath,
+                                (self.failgrid, self.depth, self.swathSpinbox.value(), self.ppSpinBox.value()))
+                self.threadpool.start(worker)
+            else:
+                self.consoleBox.appendPlainText('No path planning is required. All grids are compliant.')
+                self.pathplot.set_data([], [])
+                self.canvas2.draw()
+                self.enabletask()
         else:
-            self.consoleBox.appendPlainText('No path planning is required. All grids are compliant.')
-            self.pathplot.set_data([], [])
-            self.canvas2.draw()
+            self.consoleBox.appendPlainText('Fail to plan path. Grid compliance must be checked first.')
             self.enabletask()
 
     def run_reporter(self):
@@ -442,10 +476,10 @@ class Window(QMainWindow, Ui_MainWindow):
         info = 'Job name: {}\n'.format(self.inputName.text()) + \
                'Report generated on: {}\n'.format(str(datetime.now())[:-7]) + \
                'Survey standards: \n' \
-               '      Feature detection: {} m\n'.format(self.inputFeature.text()) + \
-               '      Bathymetric coverage: {}00%\n'.format(self.inputCoverage.text()) + \
+               '      Feature detection: {} m\n'.format(self.inputFeature.value()) + \
+               '      Bathymetric coverage: {}00%\n'.format(self.inputCoverage.value()) + \
+               '      Minimum data densiy: {} points per feature\n'.format(self.inputDensity.value()) + \
                'Total lines processed: {}\n'.format(self.line_no) + \
-               'Default swath angle: {}\N{DEGREE SIGN}\n'.format(self.swathSpinbox.value()) + \
                self.failtext.get_text()
         worker = Worker(self.reporter.genreport,
                         (info, self.hist, self.bin, self.xylim, self.boundary, self.failgrid, self.reportDir.text()))
@@ -517,7 +551,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.consoleBox.insertPlainText('Done.')
         self.failgrid = fail_xy
         bounarea = getpolyarea(self.boundary)
-        failarea = fail_xy.shape[0] * (float(self.inputFeature.text()) ** 2)
+        failarea = fail_xy.shape[0] * (self.inputFeature.value() ** 2)
         failrate = min(failarea / bounarea, 1)
         self.failtext.set_text(
             'Compliant Grids (Green): {:.2%}\nNon-compliant Grids (Red): {:.2%}'.format(1 - failrate, failrate))
@@ -527,7 +561,32 @@ class Window(QMainWindow, Ui_MainWindow):
         self.canvas2.draw()
 
         if self.failOutCheckbox.isChecked():
-            np.savetxt(self.failDir.text(), self.failgrid, fmt='%.3f', header='Easting Northing', comments='')
+            if self.failDir.text()[-3:] == 'tif':
+                fig = Figure(figsize=(self.xylim[1][0] - self.xylim[0][0], self.xylim[1][1] - self.xylim[0][1]),
+                             frameon=False)
+                ax = fig.add_axes((0, 0, 1, 1), aspect='equal')
+                ax.set_axis_off()
+                ax.set_xlim(self.xylim[0][0], self.xylim[1][0])
+                ax.set_ylim(self.xylim[0][1], self.xylim[1][1])
+                patch = Polypatch(self.boundary, edgecolor='None', facecolor='grey', alpha=0.5, zorder=0,
+                                  antialiased=True)
+                ax.add_patch(patch)
+                ax.plot(self.failgrid[:, 0], self.failgrid[:, 1], c='yellow', marker="s", mew=0, lw=0,
+                        ms=72 * self.inputFeature.value(), alpha=0.5, zorder=1, antialiased=True)
+                fig.savefig(self.failDir.text(), dpi=6, transparent=True)
+                failtif = gdal.Open(self.failDir.text(), gdal.GA_Update)
+                failtif.SetProjection(self.dialog.epsg.ExportToWkt())
+                failtif.SetGeoTransform([self.xylim[0][0], 1 / 6, 0, self.xylim[1][1], 0, -1 / 6])
+                failtif.FlushCache()
+                failtif = None
+            elif self.failDir.text()[-3:] == 'wpt':
+                txt = ''.join('[WAYPOINT({})]\nType = 0\nXwp = {}\nYwp = {}\nZwp = 0\nName = {}\nTol1 = 0\nTol2 = 0\n\n'
+                              .format(i + 1, x[0], x[1], str(datetime.now())[:-7]) for i, x in enumerate(self.failgrid))
+                wptfile = open(self.failDir.text(), 'w')
+                wptfile.write(txt)
+                wptfile.close()
+            else:
+                np.savetxt(self.failDir.text(), self.failgrid, fmt='%.3f', header='Easting Northing', comments='')
 
         if self.ppGroup.isChecked():
             self.run_planner()
@@ -542,7 +601,14 @@ class Window(QMainWindow, Ui_MainWindow):
         self.canvas2.draw()
 
         if self.ppOutCheckbox.isChecked():
-            np.savetxt(self.ppDir.text(), waypt, fmt='%.3f', header='Easting Northing', comments='')
+            if self.ppDir.text()[-3:] == 'wpt':
+                txt = ''.join('[WAYPOINT({})]\nType = 0\nXwp = {}\nYwp = {}\nZwp = 0\nName = {}\nTol1 = 0\nTol2 = 0\n\n'
+                              .format(i + 1, x[0], x[1], str(datetime.now())[:-7]) for i, x in enumerate(waypt))
+                wptfile = open(self.ppDir.text(), 'w')
+                wptfile.write(txt)
+                wptfile.close()
+            else:
+                np.savetxt(self.ppDir.text(), waypt, fmt='%.3f', header='Easting Northing', comments='')
 
         self.enabletask()
 
@@ -554,7 +620,9 @@ class Window(QMainWindow, Ui_MainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    # app.setFont(QFont('Calibri', 12))
+    font = QFont()
+    font.setPointSize(8)
+    app.setFont(font)
     win = Window()
     win.show()
     sys.exit(app.exec_())
