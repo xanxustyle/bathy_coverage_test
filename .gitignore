@@ -5,4 +5,3 @@
 *.xml
 **/.idea/
 venv/
-build/
