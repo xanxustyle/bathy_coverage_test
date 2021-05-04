@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from affine import Affine
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -15,9 +16,8 @@ from matplotlib.backends.backend_qt5agg import (FigureCanvasQTAgg as FigCanvas,
                                                 NavigationToolbar2QT as FigNavToolbar)
 from matplotlib.figure import Figure
 from matplotlib.patches import Polygon as Polypatch
-from osgeo import gdal, osr
 from scipy.spatial import KDTree, distance_matrix
-from ufunclab import max_argmax
+from rasterio import crs, errors, open as rasopen
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 from concavehull import ConcaveHull
@@ -185,12 +185,16 @@ class Planner(QObject):
         neighbor = fail_tree.query_ball_tree(fail_tree, swath_radius)
         count_max = fail_grp.shape[0]
         neighbor = nlist2array(neighbor) + 1
-        neighbor_max, neighbor_imax = max_argmax(np.count_nonzero(neighbor, axis=1))
+        neighbor_count = np.count_nonzero(neighbor, axis=1)
+        neighbor_imax = np.argmax(neighbor_count)
+        neighbor_max = neighbor_count[neighbor_imax]
         waypt = [fail_grp[neighbor_imax]]
         count = neighbor_max
         while count < count_max:
             neighbor[np.isin(neighbor, neighbor[neighbor_imax, :])] = 0
-            neighbor_max, neighbor_imax = max_argmax(np.count_nonzero(neighbor, axis=1))
+            neighbor_count = np.count_nonzero(neighbor, axis=1)
+            neighbor_imax = np.argmax(neighbor_count)
+            neighbor_max = neighbor_count[neighbor_imax]
             waypt.append(fail_grp[neighbor_imax])
             count += neighbor_max
         waypt = np.row_stack(waypt)
@@ -263,18 +267,18 @@ class EpsgDialog(QDialog, Ui_Dialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setupUi(self)
-        self.epsg = osr.SpatialReference()
-        self.epsg.ImportFromEPSG(self.spinBox.value())
-        self.textEdit.setPlainText(self.epsg.GetName())
         self.spinBox.valueChanged.connect(self.check_epsg)
+        self.epsg = crs.CRS.from_epsg(self.spinBox.value())
+        self.textEdit.setPlainText(self.epsg.wkt.split('"', 2)[1])
 
     def check_epsg(self):
-        self.epsg.ImportFromEPSG(self.spinBox.value())
-        self.buttonBox.button(QDialogButtonBox.Ok).setEnabled(bool(self.epsg.GetName()))
-        if bool(self.epsg.GetName()):
-            self.textEdit.setPlainText(self.epsg.GetName())
-        else:
-            self.textEdit.setPlainText('EPSG not found.')
+        try:
+            self.epsg = crs.CRS.from_epsg(self.spinBox.value())
+            self.textEdit.setPlainText(self.epsg.wkt.split('"', 2)[1])
+            self.buttonBox.button(QDialogButtonBox.Ok).setEnabled(True)
+        except errors.CRSError:
+            self.textEdit.setPlainText('Unknown EPSG code.')
+            self.buttonBox.button(QDialogButtonBox.Ok).setEnabled(False)
 
 
 class Window(QMainWindow, Ui_MainWindow):
@@ -574,11 +578,10 @@ class Window(QMainWindow, Ui_MainWindow):
                 ax.plot(self.failgrid[:, 0], self.failgrid[:, 1], c='yellow', marker="s", mew=0, lw=0,
                         ms=72 * self.inputFeature.value(), alpha=0.5, zorder=1, antialiased=True)
                 fig.savefig(self.failDir.text(), dpi=6, transparent=True)
-                failtif = gdal.Open(self.failDir.text(), gdal.GA_Update)
-                failtif.SetProjection(self.dialog.epsg.ExportToWkt())
-                failtif.SetGeoTransform([self.xylim[0][0], 1 / 6, 0, self.xylim[1][1], 0, -1 / 6])
-                failtif.FlushCache()
-                failtif = None
+                with rasopen(self.failDir.text(), mode='r+', driver='GTiff') as gtif:
+                    gtif.transform = Affine(1 / 6, 0, self.xylim[0][0], 0, -1 / 6, self.xylim[1][1])
+                    gtif.crs = self.dialog.epsg
+
             elif self.failDir.text()[-3:] == 'wpt':
                 txt = ''.join('[WAYPOINT({})]\nType = 0\nXwp = {}\nYwp = {}\nZwp = 0\nName = {}\nTol1 = 0\nTol2 = 0\n\n'
                               .format(i + 1, x[0], x[1], str(datetime.now())[:-7]) for i, x in enumerate(self.failgrid))
