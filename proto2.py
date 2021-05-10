@@ -15,7 +15,6 @@ from concavehull import ConcaveHull
 from elkai import solve_float_matrix
 from inpoly import inpoly2
 from main_window_ui import Ui_MainWindow
-from ufunclab import max_argmax
 
 
 def createbin(xymin, xymax, edge):
@@ -165,12 +164,16 @@ class Planner(QThread):
         neighbor = fail_tree.query_ball_tree(fail_tree, swath_radius)
         count_max = fail_grp.shape[0]
         neighbor = nlist2array(neighbor) + 1
-        neighbor_max, neighbor_imax = max_argmax(np.count_nonzero(neighbor, axis=1))
+        neighbor_count = np.count_nonzero(neighbor, axis=1)
+        neighbor_imax = np.argmax(neighbor_count)
+        neighbor_max = neighbor_count[neighbor_imax]
         waypt = [fail_grp[neighbor_imax]]
         count = neighbor_max
         while count < count_max:
             neighbor[np.isin(neighbor, neighbor[neighbor_imax, :])] = 0
-            neighbor_max, neighbor_imax = max_argmax(np.count_nonzero(neighbor, axis=1))
+            neighbor_count = np.count_nonzero(neighbor, axis=1)
+            neighbor_imax = np.argmax(neighbor_count)
+            neighbor_max = neighbor_count[neighbor_imax]
             waypt.append(fail_grp[neighbor_imax])
             count += neighbor_max
         waypt = np.row_stack(waypt)

@@ -1,5 +1,3 @@
-from PIL import Image
-import io
 import gc
 import os
 from datetime import datetime
@@ -14,8 +12,6 @@ from matplotlib.backends.backend_pdf import PdfPages
 from concavehull import ConcaveHull
 from inpoly import inpoly2
 from elkai import solve_float_matrix
-from ufunclab import max_argmax
-from osgeo import gdal, osr
 
 
 def createbin(xy_pts, edge):
@@ -120,12 +116,16 @@ neighbor = fail_tree.query_ball_tree(fail_tree, r)
 start = datetime.now()
 count_max = fail_grp.shape[0]
 neighbor = nlist2array(neighbor) + 1
-neighbor_max, neighbor_imax = max_argmax(np.count_nonzero(neighbor, axis=1))
+neighbor_count = np.count_nonzero(neighbor, axis=1)
+neighbor_imax = np.argmax(neighbor_count)
+neighbor_max = neighbor_count[neighbor_imax]
 waypt = [fail_grp[neighbor_imax]]
 count = neighbor_max
 while count < count_max:
     neighbor[np.isin(neighbor, neighbor[neighbor_imax, :])] = 0
-    neighbor_max, neighbor_imax = max_argmax(np.count_nonzero(neighbor, axis=1))
+    neighbor_count = np.count_nonzero(neighbor, axis=1)
+    neighbor_imax = np.argmax(neighbor_count)
+    neighbor_max = neighbor_count[neighbor_imax]
     waypt.append(fail_grp[neighbor_imax])
     count += neighbor_max
 
@@ -142,27 +142,6 @@ waypt = waypt[best_path]
 print('Done')
 print(datetime.now() - start)
 print(datetime.now() - start0)
-
-# xmin = boundary_pts[:, 0].min()
-# xmax = boundary_pts[:, 0].max()
-# ymin = boundary_pts[:, 1].min()
-# ymax = boundary_pts[:, 1].max()
-# fig = plt.figure(figsize=((xmax-xmin)/(xmax-xmin),(ymax-ymin)/(xmax-xmin)),frameon=False)
-# ax = fig.add_axes((0, 0, 1, 1), xlabel='Easting [m]', ylabel='Northing [m]', aspect='equal')
-# ax.set_axis_off()
-# ax.set_xlim(xmin, xmax)
-# ax.set_ylim(ymin, ymax)
-# patch = Polypatch(boundary_pts, edgecolor='black', facecolor='lime', alpha=0.5, zorder=0)
-# ax.add_patch(patch)
-# ax.scatter(fail_pts[:, 0], fail_pts[:, 1], marker=".", c='r', s=3, linewidths=0.01, zorder=1)
-# fig.savefig(file_path + '/test5.tif',dpi=300)
-# oritif = gdal.Open('C:/Users/limhs/Desktop/Intern2021/Code/TEST/test5.tif', gdal.GA_Update)
-# sr = osr.SpatialReference()
-# sr.ImportFromEPSG(32755)
-# oritif.SetProjection(sr.ExportToWkt())
-# oritif.SetGeoTransform([xmin, (xmax - xmin)/300, 0, ymax, 0, -(ymax - ymin)/480])
-# oritif.FlushCache()
-# oritif = None
 
 
 stop = 0
