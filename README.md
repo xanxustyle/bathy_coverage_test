@@ -15,5 +15,7 @@ python main.py
 ```
 
 ## Usage
-Launching the CoverTest program will bring up a UI as below.
-![](screenshot.png)
+Launching the CoverTest program will bring up a UI that allows a user to specify survey standards and view test results.
+
+<img src="screenshot.png" width="700px" title="Program Demo"></img>
+
