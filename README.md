@@ -2,29 +2,14 @@
 Coverage test of bathymetric data based on IHO S44 Edition 6.0
 
 ## Getting Started
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes. See deployment for notes on how to deploy the project on a live system.
+For anyone wishes to use this program on Windows without setting up Python, the easiest way is to use the ```build/exe.win-amd64-3.9/CoverTest.exe``` executable file. The executable was packed using ```cx_freeze```. It might trigger a firewall alert on different machines.
 
-### Prerequisites
-What things you need to install the software and how to install them
-
+### Setting Up Python Environment
+Use **Python 3.9** and install all the dependencies with:
 ```
-Give examples
+pip install -r requirements.txt
 ```
-
-### Installing
-
-A step by step series of examples that tell you how to get a development env running
-
-Say what the step will be
-
+Then, run the script file as show below:
 ```
-Give the example
+python main.py
 ```
-
-And repeat
-
-```
-until finished
-```
-
-End with an example of getting some data out of the system or using it for a little demo
