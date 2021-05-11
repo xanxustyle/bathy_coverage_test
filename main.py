@@ -295,6 +295,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.dialog = EpsgDialog(self)
 
         self.line_no = 0
+        self.prewatch_len = 0
         self.depth = 0
         self.bin = ()
         self.xylim = None
@@ -410,6 +411,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.threadpool.start(watchdog_worker)
         self.consoleBox.appendPlainText('Program started.\nWatching {}'.format(self.inputDir.text()))
         files = [f for f in os.listdir(self.inputDir.text()) if f.endswith('.txt')]
+        self.prewatch_len = len(files)
         worker = Worker(self.watcher.prewatch, files)
         self.threadpool.start(worker)
 
@@ -510,32 +512,33 @@ class Window(QMainWindow, Ui_MainWindow):
         self.hist, self.depth, self.xylim = tup
         self.line_no += 1
         self.consoleBox.appendPlainText('Loaded {} lines to coverage map.'.format(self.line_no))
-        self.ax1.set_xlim(self.xylim[0][0] - 5, self.xylim[1][0] + 5)
-        self.ax1.set_ylim(self.xylim[0][1] - 5, self.xylim[1][1] + 5)
-        self.ax2.set_xlim(self.xylim[0][0] - 5, self.xylim[1][0] + 5)
-        self.ax2.set_ylim(self.xylim[0][1] - 5, self.xylim[1][1] + 5)
-        self.ax1.set_title('Coverage Map of {} Lines'.format(self.line_no))
-        if self.cmesh is None:
-            cmax = int(np.max(self.hist))
-            self.cmesh = self.ax1.imshow(
-                self.hist.T, cmap=plt.get_cmap('viridis', cmax + 1), interpolation='nearest', origin='lower',
-                extent=[self.bin[0][0], self.bin[0][-1], self.bin[1][0], self.bin[1][-1]])
-            self.cbar = self.fig1.colorbar(
-                self.cmesh, ticks=np.linspace(cmax / (cmax + 1) / 2, cmax - cmax / (cmax + 1) / 2, cmax + 1),
-                aspect=50, location='bottom')
-            self.cbar.ax.set_xticklabels(np.arange(cmax + 1))
-            self.ax1.set_position((0.07, 0.1, 0.9, 0.85))
-            self.ax1.set_anchor('C')
-            self.cbar.ax.set_position((0.07, 0.03, 0.9, 0.018))
-        else:
-            cmax = int(np.max(self.hist))
-            self.cmesh.set_data(self.hist.T)
-            self.cmesh.set_cmap(plt.get_cmap('viridis', cmax + 1))
-            self.cmesh.autoscale()
-            self.cbar.set_ticks(np.linspace(cmax / (cmax + 1) / 2, cmax - cmax / (cmax + 1) / 2, cmax + 1))
-            self.cbar.draw_all()
-            self.cbar.ax.set_xticklabels(np.arange(cmax + 1))
-        self.canvas1.draw()
+        if self.line_no == 1 or self.line_no >= self.prewatch_len:
+            self.ax1.set_xlim(self.xylim[0][0] - 5, self.xylim[1][0] + 5)
+            self.ax1.set_ylim(self.xylim[0][1] - 5, self.xylim[1][1] + 5)
+            self.ax2.set_xlim(self.xylim[0][0] - 5, self.xylim[1][0] + 5)
+            self.ax2.set_ylim(self.xylim[0][1] - 5, self.xylim[1][1] + 5)
+            self.ax1.set_title('Coverage Map of {} Lines'.format(self.line_no))
+            if self.cmesh is None:
+                cmax = int(np.max(self.hist))
+                self.cmesh = self.ax1.imshow(
+                    self.hist.T, cmap=plt.get_cmap('viridis', cmax + 1), interpolation='nearest', origin='lower',
+                    extent=[self.bin[0][0], self.bin[0][-1], self.bin[1][0], self.bin[1][-1]])
+                self.cbar = self.fig1.colorbar(
+                    self.cmesh, ticks=np.linspace(cmax / (cmax + 1) / 2, cmax - cmax / (cmax + 1) / 2, cmax + 1),
+                    aspect=50, location='bottom')
+                self.cbar.ax.set_xticklabels(np.arange(cmax + 1))
+                self.ax1.set_position((0.07, 0.1, 0.9, 0.85))
+                self.ax1.set_anchor('C')
+                self.cbar.ax.set_position((0.07, 0.03, 0.9, 0.018))
+            else:
+                cmax = int(np.max(self.hist))
+                self.cmesh.set_data(self.hist.T)
+                self.cmesh.set_cmap(plt.get_cmap('viridis', cmax + 1))
+                self.cmesh.autoscale()
+                self.cbar.set_ticks(np.linspace(cmax / (cmax + 1) / 2, cmax - cmax / (cmax + 1) / 2, cmax + 1))
+                self.cbar.draw_all()
+                self.cbar.ax.set_xticklabels(np.arange(cmax + 1))
+            self.canvas1.draw()
 
     @pyqtSlot(object)
     def drawbound(self, boun_xy):

@@ -5,5 +5,5 @@
 *.xml
 **/.idea/
 venv/
-build/
+dist/
 other/
