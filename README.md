@@ -48,8 +48,11 @@ The ```Data Analysis``` section allows users to analyse and check input data aga
 
 * ```Build Boundary``` - Users can build the boundary of survey areas for analysis by using one of the following methods:
   * ```Manual Graphical Input``` - Build boundary manually by clicking in sequence on the coverage map (Left-click to select; Right-click to deselect; Mid-click to confirm selection).
-  * ```Use Current Data``` - Build boundary automatically by constructing [Delaunay Triangulation](https://gist.github.com/AndreLester/589ea1eddd3a28d00f3d7e47bd9f28fb) of the current input data. Users can specify the desired ```Coverage``` of input data.
+  * ```Use Current Data``` - Build boundary automatically based on the current input data. **Delaunay Triangulation** is used to build a [concave hull](https://gist.github.com/AndreLester/589ea1eddd3a28d00f3d7e47bd9f28fb) that will enclose data of a desired bathymetric coverage. Users can specify the desired ```Coverage```.
+  * ```Input File``` - Build boundary from an *ASCII* file. The input file must have a header row, an Easting (first) column, and a Northing (second) column.
+
 * ```Check Compliance``` - 
+
 * ```Path Planning``` - 
 
 ### Test Results
