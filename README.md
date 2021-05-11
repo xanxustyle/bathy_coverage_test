@@ -2,7 +2,7 @@
 Coverage test of bathymetric data based on IHO S44 Edition 6.0
 
 ## Getting Started
-For anyone wishes to use this program on Windows without setting up Python, the easiest way is to download the ```build/exe.win-amd64-3.9/``` directory and launch the ```CoverTest.exe``` executable file. The executable was packed by using [cx_freeze](https://pypi.org/project/cx-Freeze/).
+To use this program on Windows without setting up Python, download the ```build/exe.win-amd64-3.9/``` directory and launch the ```CoverTest.exe``` executable file. The executable was packed by using [cx_freeze](https://pypi.org/project/cx-Freeze/).
 
 ### Setting Up Python Environment
 Use **Python 3.9** and install all the dependencies with:
@@ -15,14 +15,28 @@ python main.py
 ```
 
 ## Usage
-At startup, the CoverTest program will bring up a frontend UI that allows a user to specify survey standards and view test results.
+The program accepts semi-processed bathymetric data (*ASCII* files with the ```txt``` extension). Each input file should contain data collected from a **single** trackline. The input file must be in the following format:
 
-<img src="screenshot.png" width="700px" title="Program Demo"></img>
+* First row: Header row
+* First column: Easting in metres
+* Second column: Northing in metres
+* Third column: Depth in metres
+
+At startup, the CoverTest program will bring up a frontend UI that allows users to specify survey standards and view test results.
+
+<p align="center">
+<img src="screenshot.png" width="700px" title="Program Demo">
+</p>
 
 ### Test Configurations
+The configuration section allows users to select a line file directory and specify the required survey standards. 
 
+The ```Line File Directory``` is where the input files are stored. The program uses the [watchdog](https://pythonhosted.org/watchdog/) module to monitor file system events in the selected directory.
 
 ### Data Analysis
+
+
+#### Test Results
 
 
 ### Test Reporting
