@@ -29,24 +29,30 @@ At startup, the CoverTest program will bring up a frontend UI that allows users 
 </p>
 
 ### Test Configurations
-The configuration section allows users to select an input file directory and specify the required survey standards. 
+The ```Configurations``` section allows users to select an input file directory and specify the required survey standards. 
 
-```Line File Directory``` is where the input files are stored. The program uses the [watchdog](https://pythonhosted.org/watchdog/) module to monitor file system events in the selected directory. The program will check for and read existing ```.txt``` files in the selected directory. New ```.txt``` files added to the directory will be automatically read.
+* ```Line File Directory``` is where the input files are stored. The program uses the [watchdog](https://pythonhosted.org/watchdog/) module to monitor file system events in the selected directory. The program will automatically check for existing and newly added ```.txt``` files in the selected directory.
 
-```Job Name``` parameter allows users to set the name recorded in the test report. It does not affect the test results. By default, it is named after the current date.
+* ```Job Name``` parameter allows users to set the name recorded in the test report. It does not affect the test results. By default, it is named after the current date.
 
-```Feature Size``` is the required size of feature detection in *metres*. It will be used as the grid size for constructing the bathymetric coverage map. The default value is 1.0 metre.
+* ```Feature Size``` is the required size of feature detection in *metres*. It will be used as the grid size for constructing the bathymetric coverage map. The default value is 1.0 metre.
 
-```Minimum Data Density``` is the minimum number of datapoints required by every grid. Grids with datapoints less than this parameter will be rejected in the bathymetric coverage. The default value is 1.
+* ```Minimum Data Density``` is the minimum number of datapoints required by every grid. Grids with datapoints less than this parameter will be rejected in the bathymetric coverage. The default value is 1.
 
-```Approx. Survey Diagonal``` is the approximated (maximum) diagonal size of the survey area. It will be used for constructing the grids of the bathymetric coverage map. The given diagonal size must be larger than the actual size to construct the coverage map correctly. The default value is 1000 metres.
+* ```Approx. Survey Diagonal``` is the approximated (maximum) diagonal size of the survey area. It will be used for constructing the grids of the bathymetric coverage map. The given diagonal size must be larger than the actual size to construct the coverage map correctly. The default value is 1000 metres.
 
-When the ```Run Program``` button is clicked, the CoverTest program will be started. 
+Clicking on the ```Run Program``` button will start running the CoverTest program and prevent further changes to the selected directory and configurations. A restart will be required to make any changes. When the program is running, existing and newly added files in the selected directory will be read to compute a bathymatric coverage map. The program uses **Binary Search** to bin the data into the grids of the coverage map. After reading the first input file, the left plot window will display the coverage map.
 
 ### Data Analysis
+The ```Data Analysis``` section allows users to analyse and check input data against the required survey standards. Users have the option to select one or more of the following tasks (by checking the boxes).
 
+* ```Build Boundary``` - Users can build the boundary of survey areas for analysis by using one of the following methods:
+  * ```Manual Graphical Input``` - Build boundary manually by clicking in sequence on the coverage map (Left-click to select; Right-click to deselect; Mid-click to confirm selection).
+  * ```Use Current Data``` - Build boundary automatically by constructing [Delaunay Triangulation](https://gist.github.com/AndreLester/589ea1eddd3a28d00f3d7e47bd9f28fb) of the current input data. Users can specify the desired ```Coverage``` of input data.
+* ```Check Compliance``` - 
+* ```Path Planning``` - 
 
-#### Test Results
+### Test Results
 
 
 ### Test Reporting
