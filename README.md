@@ -37,4 +37,4 @@ At startup, the CoverTest program will bring up a frontend UI that allows a user
 * Nathan Green - Project advisor/supervisor.
 
 ## License
-This project is licensed under the MIT License - see the [LICENSE.md]() file for details
+This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
