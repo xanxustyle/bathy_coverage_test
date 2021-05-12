@@ -53,7 +53,7 @@ The ```Data Analysis``` section allows users to analyse and check input data aga
 
 * ```Check Compliance``` - Users can check the compliance of data against the survey standards by specifying a desired ```Minimum Coverage``` (default value is 1). This task can only be executed after building a feasible boundary. The program uses a fast [mapping algorithm](https://ieeexplore.ieee.org/document/9286157) to identify the non-compliant grids. After executing this task, the right plot window will display the grid compliance map. Users have the option to output the grid compliance map in the selected format: ```.tif (geotif)``` (geo-referenced TIF raster image produced by [rasterio](https://rasterio.readthedocs.io/en/latest/)), ```.wpt``` (list of coordinates in a waypoint format accepted by [CARIS onboard](https://www.teledynecaris.com/en/products/whats-new/caris-onboard/)), or ```.txt / .csv``` (list of coordinates in *ASCII* text file).
 
-* ```Path Planning``` - 
+* ```Path Planning``` - Users can generate a mission plan to recover non-compliant data. The program can groups non-compliant grids into a minimum number of waypoints using a greedy set cover algorithm based on a user-specified ```Swath Angle``` (default value is 110°).
 
 ### Test Results
 
