@@ -56,12 +56,13 @@ The ```Data Analysis``` section allows users to analyse and check input data aga
 * ```Path Planning``` - Users can generate a mission plan to recover non-compliant data. This task can only be executed if there is any non-compliant grids. The program can groups non-compliant grids into a minimum number of waypoints by using [*k*-d tree structure](https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.KDTree.html) and a greedy set cover algorithm. The number of resultant waypoints is dependent on the swath width, which can be controlled by a user-specified ```Swath Angle``` (default value is 110°). Next, the program uses the [Lin-Kernighan Heuristic (LKH)](http://akira.ruc.dk/~keld/research/LKH/) algorithm to determine the shortest path for recovering the non-compliant data. Users have the option to output the resultant path and its waypoints in the selected format: ```.wpt``` (list of coordinates in a waypoint format accepted by [CARIS onboard](https://www.teledynecaris.com/en/products/whats-new/caris-onboard/)), or ```.txt / .csv``` (list of coordinates in *ASCII* text file).
 
 ### Test Results
-The program generates test results on two plot windows. The left plot window displays a bathymetric coverage map with Easting in *metres* on the x-axis and Northing in *metres* on the y-axis. The map shows the number of times a grid has been covered by a compliant reading from independent tracklines.
+The program generates test results on two plot windows. The left plot window displays a bathymetric coverage map with Easting in *metres* on the x-axis and Northing in *metres* on the y-axis. The coverage map shows the number of times a grid has been covered by a compliant reading from independent tracklines.
 
-The right plot window displays a grid compliance map with Easting in *metres* on the x-axis and Northing in *metres* on the y-axis. The map shows compliant grids in green and non-compliant grids in red. The percentage of grid compliance within the given boundary is shown at the bottom of the plot window.
+The right plot window displays a grid compliance map with Easting in *metres* on the x-axis and Northing in *metres* on the y-axis. Compliant grids are shown in green colour, while non-compliant grids are in red colour. The percentage of grid compliance within the given boundary is shown at the bottom of the plot window.
 
 Users can manipulate the dataset in the plot windows by using the toolbars that are embedded below the windows. The description of each of the buttons on the toolbars is as follows:
 
+<img src="https://matplotlib.org/3.2.2/_images/toolbar.png" width="200">
 
 ### Test Reporting
 
