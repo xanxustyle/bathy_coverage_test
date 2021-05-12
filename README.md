@@ -46,12 +46,12 @@ Clicking on the ```Run Program``` button will start running the CoverTest progra
 ### Data Analysis
 The ```Data Analysis``` section allows users to analyse and check input data against the required survey standards. Users have the option to select one or more of the following tasks (by checking the boxes).
 
-* ```Build Boundary``` - Users can build the boundary of survey areas for analysis by using one of the following methods:
-  * ```Manual Graphical Input``` - Build boundary manually by clicking in sequence on the coverage map (Left-click to select; Right-click to deselect; Mid-click to confirm selection).
-  * ```Use Current Data``` - Build boundary automatically based on the current input data. **Delaunay Triangulation** is used to build a [concave hull](https://gist.github.com/AndreLester/589ea1eddd3a28d00f3d7e47bd9f28fb) that will enclose data of a desired bathymetric coverage. Users can specify the desired ```Coverage``` (default value is 1).
-  * ```Input File``` - Build boundary from an *ASCII* file. The input file must have a header row, an Easting (first) column, and a Northing (second) column.
+* ```Build Boundary``` - Users can build the boundary of survey areas for analysis. After executing this task, the right plot window will display the resultant boundary. Boundary can be built by using one of the following methods:
+  * ```Manual Graphical Input``` - Build boundary manually by clicking in sequence on the coverage map (left plot window). Left-click to select; right-click to deselect; mid-click to confirm selection.
+  * ```Use Current Data``` - Build boundary automatically based on the current input data. [Delaunay Triangulation](https://gist.github.com/AndreLester/589ea1eddd3a28d00f3d7e47bd9f28fb) is used to build a concave hull that will enclose data of a desired bathymetric coverage. Users can specify the desired ```Coverage``` (default value is 1).
+  * ```Input File``` - Build boundary from an *ASCII* file. The input file must have a header row, an Easting (first) column in *metres*, and a Northing (second) column in *metres*.
 
-* ```Check Compliance``` - Users can check the 
+* ```Check Compliance``` - Users can check the compliance of data against the survey standards by specifying a desired ```Minimum Coverage``` (default value is 1). This task can only be executed after building a survey area boundary. The program uses a fast [point-in-polygon](https://github.com/dengwirda/inpoly-python) check to select the non-compliant grids. After executing this task, the right plot window will display the grid compliance map. Users have the option to output the grid compliance map
 
 * ```Path Planning``` - 
 
