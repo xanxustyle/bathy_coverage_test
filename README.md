@@ -1,5 +1,5 @@
 # CoverTest Program
-Coverage test of bathymetric data based on IHO S44 Edition 6.0
+Coverage test of bathymetric data based on [International Hydrographic Organization Standards for Hydrographic Surveys (S44) Edition 6.0](https://iho.int/uploads/user/pubs/Drafts/S-44_Edition_6.0.0-Final.pdf).
 
 ## Getting Started
 To use this program on Windows without setting up Python, download the ```build/exe.win-amd64-3.9/``` directory and launch the ```CoverTest.exe``` executable file. The executable was packed by using [cx_freeze](https://cx-freeze.readthedocs.io/en/latest/).
@@ -51,7 +51,7 @@ The ```Data Analysis``` section allows users to analyse and check input data aga
   * ```Use Current Data``` - Build boundary automatically based on the current input data. [Delaunay Triangulation](https://gist.github.com/AndreLester/589ea1eddd3a28d00f3d7e47bd9f28fb) is used to build a concave hull that will enclose data of a desired bathymetric coverage. Users can specify the desired ```Coverage``` (default value is 1).
   * ```Input File``` - Build boundary from an *ASCII* file. The input file must have a header row, an Easting (first) column in *metres*, and a Northing (second) column in *metres*.
 
-* ```Check Compliance``` - Users can check the compliance of data against the survey standards by specifying a desired ```Minimum Coverage``` (default value is 1). This task can only be executed after building a feasible boundary. The program uses a fast [mapping algorithm](https://ieeexplore.ieee.org/document/9286157) to identify the non-compliant grids. After executing this task, the right plot window will display the grid compliance map. Users have the option to output the grid compliance map in the selected format: ```.tif (geotif)``` (geo-referenced TIF raster image produced by [rasterio](https://rasterio.readthedocs.io/en/latest/)), ```.wpt``` (list of coordinates in a waypoint format accepted by [CARIS onboard](https://www.teledynecaris.com/en/products/whats-new/caris-onboard/)), or ```.txt / .csv``` (list of coordinates in ASCII text file).
+* ```Check Compliance``` - Users can check the compliance of data against the survey standards by specifying a desired ```Minimum Coverage``` (default value is 1). This task can only be executed after building a feasible boundary. The program uses a fast [mapping algorithm](https://ieeexplore.ieee.org/document/9286157) to identify the non-compliant grids. After executing this task, the right plot window will display the grid compliance map. Users have the option to output the grid compliance map in the selected format: ```.tif (geotif)``` (geo-referenced TIF raster image produced by [rasterio](https://rasterio.readthedocs.io/en/latest/)), ```.wpt``` (list of coordinates in a waypoint format accepted by [CARIS onboard](https://www.teledynecaris.com/en/products/whats-new/caris-onboard/)), or ```.txt / .csv``` (list of coordinates in *ASCII* text file).
 
 * ```Path Planning``` - 
 
