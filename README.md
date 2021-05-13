@@ -51,18 +51,29 @@ The ```Data Analysis``` section allows users to analyse and check input data aga
   * ```Use Current Data``` - Build boundary automatically based on the current input data. [Delaunay Triangulation](https://gist.github.com/AndreLester/589ea1eddd3a28d00f3d7e47bd9f28fb) is used to build a concave hull that will enclose data of a desired bathymetric coverage. Users can specify the desired ```Coverage``` (default value is 1).
   * ```Input File``` - Build boundary from an *ASCII* file. The input file must have a header row, an Easting (first) column in *metres*, and a Northing (second) column in *metres*.
 
-* ```Check Compliance``` - Users can check the compliance of data against the survey standards by specifying a desired ```Minimum Coverage``` (default value is 1). This task can only be executed after building a feasible boundary. The program uses a fast [mapping algorithm](https://ieeexplore.ieee.org/document/9286157) to identify the non-compliant grids. After executing this task, the right plot window will display the grid compliance map. Users have the option to output the grid compliance map in the selected format: ```.tif (geotif)``` (geo-referenced TIF raster image produced by [rasterio](https://rasterio.readthedocs.io/en/latest/)), ```.wpt``` (list of coordinates in a waypoint format accepted by [CARIS onboard](https://www.teledynecaris.com/en/products/whats-new/caris-onboard/)), or ```.txt / .csv``` (list of coordinates in *ASCII* text file).
+* ```Check Compliance``` - Users can check the compliance of data against the survey standards by specifying a desired ```Minimum Coverage``` (default value is 1). This task can only be executed after building a feasible boundary. The program uses a fast [mapping algorithm](https://ieeexplore.ieee.org/document/9286157) to identify the non-compliant grids. After executing this task, the right plot window will display the grid compliance map. Users have the option to output the grid compliance map in the selected format: ```.tif (geotif)``` (geo-referenced TIF raster image produced by [rasterio](https://rasterio.readthedocs.io/en/latest/); users need to define the coordinate reference system by [EPSG code](https://spatialreference.org/ref/epsg/)), ```.wpt``` (list of coordinates in a waypoint format accepted by [CARIS onboard](https://www.teledynecaris.com/en/products/whats-new/caris-onboard/)), or ```.txt / .csv``` (list of coordinates in *ASCII* text file).
 
 * ```Path Planning``` - Users can generate a mission plan to recover non-compliant data. This task can only be executed if there is any non-compliant grids. The program can groups non-compliant grids into a minimum number of waypoints by using [*k*-d tree structure](https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.KDTree.html) and a greedy set cover algorithm. The number of resultant waypoints is dependent on the swath width, which can be controlled by a user-specified ```Swath Angle``` (default value is 110°). Next, the program uses the [Lin-Kernighan Heuristic (LKH)](http://akira.ruc.dk/~keld/research/LKH/) algorithm to determine the shortest path for recovering the non-compliant data. Users have the option to output the resultant path and its waypoints in the selected format: ```.wpt``` (list of coordinates in a waypoint format accepted by [CARIS onboard](https://www.teledynecaris.com/en/products/whats-new/caris-onboard/)), or ```.txt / .csv``` (list of coordinates in *ASCII* text file).
+
 
 ### Test Results
 The program generates test results on two plot windows. The left plot window displays a bathymetric coverage map with Easting in *metres* on the x-axis and Northing in *metres* on the y-axis. The coverage map shows the number of times a grid has been covered by a compliant reading from independent tracklines.
 
 The right plot window displays a grid compliance map with Easting in *metres* on the x-axis and Northing in *metres* on the y-axis. Compliant grids are shown in green colour, while non-compliant grids are in red colour. The percentage of grid compliance within the given boundary is shown at the bottom of the plot window.
 
-Users can manipulate the dataset in the plot windows by using the toolbars that are embedded below the windows. The description of each of the buttons on the toolbars is as follows:
+Users can manipulate the views of dataset in the plot windows by using the navigation toolbars that are embedded below the windows. The description of each of the buttons on the toolbars is as follows:
 
-<img src="https://matplotlib.org/3.2.2/_images/toolbar.png" width="200">
+<img src="screenshot_toolbar.png" width="300">
+
+The first button is the ```Home``` button, which is used to bring back the first (default) view of the data. The next two buttons are the ```Forward``` and ```Back``` buttons respectively, which are used to navigate back and forth between previously defined views.
+
+The fourth button is the ```Pan/Zoom``` button. This button has two modes: pan and zoom. Click this button to activate panning and zooming mode, then put the mouse somewhere over an axes. Press the left mouse button and hold it to pan the figure and drag it to a new position. Press and hold the right mouse button to zoom. The x axis will be zoomed in proportionately to the rightward movement and zoomed out proportionately to the leftward movement. The same is true for the y axis and up/down motions.
+
+The fifth button is the ```Zoom-to-rectangle``` button. Click this button to activate zooming mode. Put the mouse somewhere over an axes and press a mouse button. Define a rectangular region by dragging the mouse while holding the button to a new location. When using the left mouse button, the axes view limits will be zoomed to the defined region. When using the right mouse button, the axes view limits will be zoomed out, placing the original axes in the defined region.
+
+The sixth button is the ```Subplot-configuration``` button. Use this tool to configure the appearance of the plot by adjusting the left, right, top, or bottom space of the plot, or the space between the subplot rows or columns. The seventh button is the ```Figure-option``` button. Use this tool to adjust the colors, line styles, markers in the plot.
+
+The last button is the ```Save``` button. Click this button to launch a file save dialog. Figures can be saved with the following extensions: ```.png```, ```.jpg```, ```.tif```, ```.ps```, ```.eps```, ```.svg```, ```.pgf``` and ```.pdf```.
 
 ### Test Reporting
 
