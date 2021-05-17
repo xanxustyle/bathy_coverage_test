@@ -41,7 +41,7 @@ The ```Configurations``` section allows users to select an input file directory 
 
 * ```Approx. Survey Diagonal``` is the approximated (maximum) diagonal size of the survey area. It will be used for constructing the grids of the bathymetric coverage map. The given diagonal size must be larger than the actual size to construct the coverage map correctly (but excessive diagonal size will decrease the program performance). The default value is 1000 metres.
 
-Clicking on the ```Run Program``` button will start running the CoverTest program and prevent further changes to the selected directory and configurations. A restart will be required to make any changes. When the program is running, existing and newly added files in the selected directory will be read to compute a bathymatric coverage map. The program uses **Binary Search** to bin the data into the grids of the coverage map. After reading the first input file, the left plot window will display the coverage map.
+Clicking on the ```Run Program``` button will start running the CoverTest program and prevent further changes to the selected directory and configurations. A restart will be required to make any changes. When the program is running, existing and newly added files in the selected directory will be read to compute a bathymatric coverage map. The program uses [Binary Search](https://github.com/astrofrog/fast-histogram) to bin the data into the grids of the coverage map. After reading the first input file, the left plot window will display the coverage map.
 
 ### Data Analysis
 The ```Data Analysis``` section allows users to analyse and check input data against the required survey standards. Users have the option to select one or more of the following tasks (by checking the boxes).
@@ -57,7 +57,7 @@ The ```Data Analysis``` section allows users to analyse and check input data aga
 
 
 ### Test Results
-The program generates test results on two plot windows. The left plot window displays a bathymetric coverage map with Easting in *metres* on the x-axis and Northing in *metres* on the y-axis. The coverage map shows the number of times a grid has been covered by a compliant reading from independent tracklines.
+The program uses [Matplotlib](https://matplotlib.org/) to generate test results on two plot windows. The left plot window displays a bathymetric coverage map with Easting in *metres* on the x-axis and Northing in *metres* on the y-axis. The coverage map shows the number of times a grid has been covered by a compliant reading from independent tracklines.
 
 The right plot window displays a grid compliance map with Easting in *metres* on the x-axis and Northing in *metres* on the y-axis. Compliant grids are shown in green colour, while non-compliant grids are in red colour. The percentage of grid compliance within the given boundary is shown at the bottom of the plot window.
 
@@ -87,6 +87,7 @@ Users can generate a test report after checking grid compliances. The report wil
 * Grid compliance map
 
 ## Built With
+* [Numpy](https://numpy.org/doc/stable/reference/index.html) and [Pandas](https://pandas.pydata.org/docs/index.html) - Data structure used.
 * [PyQt5](https://doc.qt.io/qtforpython/) - UI framework used.
 * [QThreadPool](https://doc.qt.io/qt-5/qthreadpool.html) - Multi-threading framework used.
 
