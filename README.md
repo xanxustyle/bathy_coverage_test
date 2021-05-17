@@ -39,7 +39,7 @@ The ```Configurations``` section allows users to select an input file directory 
 
 * ```Minimum Data Density``` is the minimum number of datapoints required by every grid. Grids with datapoints less than this parameter will be rejected in the bathymetric coverage. The default value is 1.
 
-* ```Approx. Survey Diagonal``` is the approximated (maximum) diagonal size of the survey area. It will be used for constructing the grids of the bathymetric coverage map. The given diagonal size must be larger than the actual size to construct the coverage map correctly. The default value is 1000 metres.
+* ```Approx. Survey Diagonal``` is the approximated (maximum) diagonal size of the survey area. It will be used for constructing the grids of the bathymetric coverage map. The given diagonal size must be larger than the actual size to construct the coverage map correctly (but excessive diagonal size will decrease the program performance). The default value is 1000 metres.
 
 Clicking on the ```Run Program``` button will start running the CoverTest program and prevent further changes to the selected directory and configurations. A restart will be required to make any changes. When the program is running, existing and newly added files in the selected directory will be read to compute a bathymatric coverage map. The program uses **Binary Search** to bin the data into the grids of the coverage map. After reading the first input file, the left plot window will display the coverage map.
 
@@ -76,7 +76,15 @@ The second to last is the ```Subplot-configuration``` button. Use this tool to c
 The last button is the ```Save``` button. Click this button to launch a file save dialog. Figures can be saved with the following extensions: ```.png```, ```.jpg```, ```.tif```, ```.ps```, ```.eps```, ```.svg```, ```.pgf``` and ```.pdf```.
 
 ### Test Reporting
-
+Users can generate a test report after checking grid compliances. The report will contain the following information:
+* Job name
+* Date and time when the report is generated
+* Feature size requirement
+* Bathymetric coverage requirement
+* Minimum data density
+* Total number of lines processed
+* Coverage map
+* Grid compliance map
 
 ## Built With
 * [PyQt5](https://doc.qt.io/qtforpython/) - UI framework used.
