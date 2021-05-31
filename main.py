@@ -68,8 +68,6 @@ class Handler(PatternMatchingEventHandler):
         self.watch_signal = watch_signal
 
     def on_created(self, event):
-        """Depending on how Caris process creates the file, this might not work.
-        Solution: Create tmp file when writing, rename to txt on completion, use on_moved and change to dest_path"""
         time.sleep(30)
         self.watch_signal.emit(str(event.src_path))
 
@@ -86,6 +84,11 @@ class Watcher(QObject):
     def startwatch(self):
         self.observer.schedule(self.handler, self.watchdir, recursive=False)
         self.observer.start()
+
+    def read_prewatch(self, files):
+        for file in files:
+            self.watch_signal.emit(file)
+            time.sleep(1)
 
 
 class Reader(QObject):
@@ -121,7 +124,8 @@ class Reader(QObject):
                                              range=[[self.bin[0][0], self.bin[0][-1]],
                                                     [self.bin[1][0], self.bin[1][-1]]]) >= self.density, 1, 0)
         else:
-            # self.hist += np.where(np.histogram2d(newdata[:, 0], newdata[:, 1],
+            # self.hist += np.where(np.hist
+            # ogram2d(newdata[:, 0], newdata[:, 1],
             #                                      bins=(self.bin[0], self.bin[1]))[0] >= self.density, 1, 0)
             self.hist += np.where(histogram2d(newdata[:, 0], newdata[:, 1], bins=(self.bin[2].size, self.bin[3].size),
                                               range=[[self.bin[0][0], self.bin[0][-1]],
