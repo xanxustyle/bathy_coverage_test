@@ -9,6 +9,7 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThreadPool, QRunnable, QObject
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QDialog, QDialogButtonBox
 from elkai import solve_float_matrix
+from fast_histogram import histogram2d
 from inpoly import inpoly2
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -67,8 +68,6 @@ class Handler(PatternMatchingEventHandler):
         self.watch_signal = watch_signal
 
     def on_created(self, event):
-        """Depending on how Caris process creates the file, this might not work.
-        Solution: Create tmp file when writing, rename to txt on completion, use on_moved and change to dest_path"""
         time.sleep(30)
         self.watch_signal.emit(str(event.src_path))
 
@@ -86,10 +85,10 @@ class Watcher(QObject):
         self.observer.schedule(self.handler, self.watchdir, recursive=False)
         self.observer.start()
 
-    def prewatch(self, files):
+    def read_prewatch(self, files):
         for file in files:
-            self.watch_signal.emit(os.path.join(self.watchdir, file))
-            time.sleep(.5)
+            self.watch_signal.emit(file)
+            time.sleep(1)
 
 
 class Reader(QObject):
@@ -106,34 +105,49 @@ class Reader(QObject):
         self.bin = ()
         self.hist = None
 
-    @pyqtSlot(str)
+    def read_prewatch(self, files):
+        for file in files:
+            self.readline(file)
+
+    # @pyqtSlot(str)
     def readline(self, sval):
         newdata = pd.read_csv(sval, sep=' ', usecols=[0, 1, 2]).to_numpy()
         self.xylim[0, :] = np.minimum(self.xylim[0, :], newdata[:, :2].min(axis=0))
         self.xylim[1, :] = np.maximum(self.xylim[1, :], newdata[:, :2].max(axis=0))
-
+        # start = datetime.now()
         if self.hist is None:
             self.bin = createbin(self.xylim[0, :] - self.diag, self.xylim[1, :] + self.diag, self.feature)
             self.bin_signal.emit(self.bin)
-            self.hist = np.where(
-                np.histogram2d(newdata[:, 0], newdata[:, 1], bins=(self.bin[0], self.bin[1]))[0] >= self.density, 1, 0)
+            # self.hist = np.where(np.histogram2d(newdata[:, 0], newdata[:, 1],
+            #                                     bins=(self.bin[0], self.bin[1]))[0] >= self.density, 1, 0)
+            self.hist = np.where(histogram2d(newdata[:, 0], newdata[:, 1], bins=(self.bin[2].size, self.bin[3].size),
+                                             range=[[self.bin[0][0], self.bin[0][-1]],
+                                                    [self.bin[1][0], self.bin[1][-1]]]) >= self.density, 1, 0)
         else:
-            self.hist += np.where(
-                np.histogram2d(newdata[:, 0], newdata[:, 1], bins=(self.bin[0], self.bin[1]))[0] >= self.density, 1, 0)
-
+            # self.hist += np.where(np.hist
+            # ogram2d(newdata[:, 0], newdata[:, 1],
+            #                                      bins=(self.bin[0], self.bin[1]))[0] >= self.density, 1, 0)
+            self.hist += np.where(histogram2d(newdata[:, 0], newdata[:, 1], bins=(self.bin[2].size, self.bin[3].size),
+                                              range=[[self.bin[0][0], self.bin[0][-1]],
+                                                     [self.bin[1][0], self.bin[1][-1]]]) >= self.density, 1, 0)
+        # print(datetime.now() - start)
         self.depth[0] = (newdata[:, 2].sum() + self.depth[0] * self.depth[1]) / (newdata.shape[0] + self.depth[1])
         self.depth[1] += newdata.shape[0]
-        self.data_signal.emit((self.hist, self.depth[0], self.xylim))
+        blim = np.column_stack((np.searchsorted(self.bin[0], self.xylim[:, 0], side='right'),
+                                np.searchsorted(self.bin[1], self.xylim[:, 1], side='right')))
+        blim[0, :] -= 2
+        blim[1, :] += 2
+        self.data_signal.emit((self.hist, self.depth[0], blim))
 
 
 class Builder(QObject):
     boun_signal = pyqtSignal(object)
 
-    def __init__(self, _bin):
+    def __init__(self, xybin):
         super(Builder, self).__init__()
-        self.bin = _bin
+        self.bin = xybin
 
-    @pyqtSlot(tuple)
+    # @pyqtSlot(tuple)
     def buildbound(self, tup):
         hist, boun_cover = tup
         hull = ConcaveHull()
@@ -147,15 +161,17 @@ class Builder(QObject):
 class Checker(QObject):
     fail_signal = pyqtSignal(object)
 
-    def __init__(self, _bin):
+    def __init__(self, xybin):
         super(Checker, self).__init__()
-        self.bin = _bin
+        self.bin = xybin
 
-    @pyqtSlot(tuple)
+    # @pyqtSlot(tuple)
     def checkgrid(self, tup):
-        hist, boun_xy, coverage = tup
-        fail_east, fail_north = np.nonzero(hist < coverage)
-        fail_xy = np.column_stack((self.bin[2][fail_east], self.bin[3][fail_north]))
+        hist, blim, boun_xy, coverage = tup
+        fail_east, fail_north = np.nonzero(hist[blim[0, 0]:blim[1, 0], blim[0, 1]:blim[1, 1]] < coverage)
+        xbin = self.bin[2][blim[0, 0]:blim[1, 0]]
+        ybin = self.bin[3][blim[0, 1]:blim[1, 1]]
+        fail_xy = np.column_stack((xbin[fail_east], ybin[fail_north]))
         fail_xy = fail_xy[inpoly2(fail_xy, boun_xy)[0]]
         self.fail_signal.emit(fail_xy)
 
@@ -166,7 +182,7 @@ class Planner(QObject):
     def __init__(self):
         super(Planner, self).__init__()
 
-    @pyqtSlot(tuple)
+    # @pyqtSlot(tuple)
     def planpath(self, tup):
         fail_xy = tup[0]
         swath_radius = tup[1] * np.tan(np.deg2rad(tup[2] / 2))
@@ -211,9 +227,9 @@ class Reporter(QObject):
     def __init__(self):
         super(Reporter, self).__init__()
 
-    @pyqtSlot(tuple)
+    # @pyqtSlot(tuple)
     def genreport(self, tup):
-        info, hist, xybin, xylim, boun, fail, file = tup
+        info, hist, xybin, blim, boun, fail, file = tup
         with PdfPages(file) as pdf:
             fig1 = Figure(figsize=(8.3, 11.7))
             ax = fig1.add_subplot(111)
@@ -231,8 +247,8 @@ class Reporter(QObject):
             gridspec = fig2.add_gridspec(2, 2, width_ratios=[1, 0.04])
             ax1 = fig2.add_subplot(gridspec[0, 0], xlabel='Easting [m]', ylabel='Northing [m]', title='Coverage Map',
                                    aspect='equal')
-            ax1.set_xlim(xylim[0][0] - 5, xylim[1][0] + 5)
-            ax1.set_ylim(xylim[0][1] - 5, xylim[1][1] + 5)
+            ax1.set_xlim(xybin[0][blim[0, 0]], xybin[0][blim[1, 0]])
+            ax1.set_ylim(xybin[1][blim[0, 1]], xybin[1][blim[1, 1]])
             ax1.get_xaxis().get_major_formatter().set_useOffset(False)
             ax1.get_xaxis().get_major_formatter().set_scientific(False)
             ax1.get_yaxis().get_major_formatter().set_useOffset(False)
@@ -248,8 +264,8 @@ class Reporter(QObject):
             ax2.set_anchor('W')
             ax3 = fig2.add_subplot(gridspec[1, 0], xlabel='Easting [m]', ylabel='Northing [m]', title='Grid Compliance',
                                    aspect='equal')
-            ax3.set_xlim(xylim[0][0] - 5, xylim[1][0] + 5)
-            ax3.set_ylim(xylim[0][1] - 5, xylim[1][1] + 5)
+            ax3.set_xlim(xybin[0][blim[0, 0]], xybin[0][blim[1, 0]])
+            ax3.set_ylim(xybin[1][blim[0, 1]], xybin[1][blim[1, 1]])
             ax3.get_xaxis().get_major_formatter().set_useOffset(False)
             ax3.get_xaxis().get_major_formatter().set_scientific(False)
             ax3.get_yaxis().get_major_formatter().set_useOffset(False)
@@ -298,7 +314,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.prewatch_len = 0
         self.depth = 0
         self.bin = ()
-        self.xylim = None
+        self.blim = None
         self.hist = None
         self.boundary = None
         self.failgrid = None
@@ -410,10 +426,13 @@ class Window(QMainWindow, Ui_MainWindow):
         watchdog_worker = Worker(self.watcher.startwatch)
         self.threadpool.start(watchdog_worker)
         self.consoleBox.appendPlainText('Program started.\nWatching {}'.format(self.inputDir.text()))
-        files = [f for f in os.listdir(self.inputDir.text()) if f.endswith('.txt')]
+        files = [os.path.join(self.inputDir.text(), f) for f in os.listdir(self.inputDir.text()) if f.endswith('.txt')]
         self.prewatch_len = len(files)
-        worker = Worker(self.watcher.prewatch, files)
-        self.threadpool.start(worker)
+        if self.prewatch_len > 0:
+            self.consoleBox.appendPlainText(
+                'Reading {} existing lines in {}... '.format(self.prewatch_len, self.inputDir.text()))
+            worker = Worker(self.reader.read_prewatch, files)
+            self.threadpool.start(worker)
 
     def exectask(self):
         self.execButton.setEnabled(False)
@@ -455,7 +474,7 @@ class Window(QMainWindow, Ui_MainWindow):
     def run_checker(self):
         self.consoleBox.appendPlainText('Checking grid compliance... ')
         if self.boundary is not None:
-            worker = Worker(self.checker.checkgrid, (self.hist, self.boundary, self.inputCoverage.value()))
+            worker = Worker(self.checker.checkgrid, (self.hist, self.blim, self.boundary, self.inputCoverage.value()))
             self.threadpool.start(worker)
         else:
             self.consoleBox.appendPlainText('Fail to check compliance. Boundary must be built first.')
@@ -488,7 +507,7 @@ class Window(QMainWindow, Ui_MainWindow):
                'Total lines processed: {}\n'.format(self.line_no) + \
                self.failtext.get_text()
         worker = Worker(self.reporter.genreport,
-                        (info, self.hist, self.bin, self.xylim, self.boundary, self.failgrid, self.reportDir.text()))
+                        (info, self.hist, self.bin, self.blim, self.boundary, self.failgrid, self.reportDir.text()))
         self.threadpool.start(worker)
 
     @pyqtSlot(str)
@@ -509,20 +528,22 @@ class Window(QMainWindow, Ui_MainWindow):
 
     @pyqtSlot(tuple)
     def drawmap(self, tup):
-        self.hist, self.depth, self.xylim = tup
+        self.hist, self.depth, self.blim = tup
         self.line_no += 1
-        self.consoleBox.appendPlainText('Loaded {} lines to coverage map.'.format(self.line_no))
-        if self.line_no == 1 or self.line_no >= self.prewatch_len:
-            self.ax1.set_xlim(self.xylim[0][0] - 5, self.xylim[1][0] + 5)
-            self.ax1.set_ylim(self.xylim[0][1] - 5, self.xylim[1][1] + 5)
-            self.ax2.set_xlim(self.xylim[0][0] - 5, self.xylim[1][0] + 5)
-            self.ax2.set_ylim(self.xylim[0][1] - 5, self.xylim[1][1] + 5)
+        self.consoleBox.appendPlainText('{} lines loaded.'.format(self.line_no))
+        if self.line_no >= self.prewatch_len:
+            self.ax1.set_xlim(self.bin[0][self.blim[0, 0]], self.bin[0][self.blim[1, 0]])
+            self.ax1.set_ylim(self.bin[1][self.blim[0, 1]], self.bin[1][self.blim[1, 1]])
+            self.ax2.set_xlim(self.bin[0][self.blim[0, 0]], self.bin[0][self.blim[1, 0]])
+            self.ax2.set_ylim(self.bin[1][self.blim[0, 1]], self.bin[1][self.blim[1, 1]])
             self.ax1.set_title('Coverage Map of {} Lines'.format(self.line_no))
             if self.cmesh is None:
                 cmax = int(np.max(self.hist))
                 self.cmesh = self.ax1.imshow(
-                    self.hist.T, cmap=plt.get_cmap('viridis', cmax + 1), interpolation='nearest', origin='lower',
-                    extent=[self.bin[0][0], self.bin[0][-1], self.bin[1][0], self.bin[1][-1]])
+                    self.hist[self.blim[0, 0]:self.blim[1, 0], self.blim[0, 1]:self.blim[1, 1]].T,
+                    cmap=plt.get_cmap('viridis', cmax + 1), interpolation='nearest', origin='lower',
+                    extent=[self.bin[0][self.blim[0, 0]], self.bin[0][self.blim[1, 0]],
+                            self.bin[1][self.blim[0, 1]], self.bin[1][self.blim[1, 1]]])
                 self.cbar = self.fig1.colorbar(
                     self.cmesh, ticks=np.linspace(cmax / (cmax + 1) / 2, cmax - cmax / (cmax + 1) / 2, cmax + 1),
                     aspect=50, location='bottom')
@@ -532,13 +553,16 @@ class Window(QMainWindow, Ui_MainWindow):
                 self.cbar.ax.set_position((0.07, 0.03, 0.9, 0.018))
             else:
                 cmax = int(np.max(self.hist))
-                self.cmesh.set_data(self.hist.T)
+                self.cmesh.set_data(self.hist[self.blim[0, 0]:self.blim[1, 0], self.blim[0, 1]:self.blim[1, 1]].T)
+                self.cmesh.set_extent([self.bin[0][self.blim[0, 0]], self.bin[0][self.blim[1, 0]],
+                                       self.bin[1][self.blim[0, 1]], self.bin[1][self.blim[1, 1]]])
                 self.cmesh.set_cmap(plt.get_cmap('viridis', cmax + 1))
                 self.cmesh.autoscale()
                 self.cbar.set_ticks(np.linspace(cmax / (cmax + 1) / 2, cmax - cmax / (cmax + 1) / 2, cmax + 1))
                 self.cbar.draw_all()
                 self.cbar.ax.set_xticklabels(np.arange(cmax + 1))
             self.canvas1.draw()
+            self.consoleBox.appendPlainText('Coverage map updated.')
 
     @pyqtSlot(object)
     def drawbound(self, boun_xy):
@@ -569,20 +593,20 @@ class Window(QMainWindow, Ui_MainWindow):
 
         if self.failOutCheckbox.isChecked():
             if self.failDir.text()[-3:] == 'tif':
-                fig = Figure(figsize=(self.xylim[1][0] - self.xylim[0][0], self.xylim[1][1] - self.xylim[0][1]),
-                             frameon=False)
+                xlim = (self.bin[0][self.blim[0, 0]], self.bin[0][self.blim[1, 0]])
+                ylim = (self.bin[1][self.blim[0, 1]], self.bin[1][self.blim[1, 1]])
+                fig = Figure(figsize=(xlim[1] - xlim[0], ylim[1] - ylim[0]), frameon=False)
                 ax = fig.add_axes((0, 0, 1, 1), aspect='equal')
                 ax.set_axis_off()
-                ax.set_xlim(self.xylim[0][0], self.xylim[1][0])
-                ax.set_ylim(self.xylim[0][1], self.xylim[1][1])
-                patch = Polypatch(self.boundary, edgecolor='None', facecolor='grey', alpha=0.5, zorder=0,
-                                  antialiased=True)
-                ax.add_patch(patch)
-                ax.plot(self.failgrid[:, 0], self.failgrid[:, 1], c='yellow', marker="s", mew=0, lw=0,
-                        ms=72 * self.inputFeature.value(), alpha=0.5, zorder=1, antialiased=True)
+                ax.set_xlim(xlim[0], xlim[1])
+                ax.set_ylim(ylim[0], ylim[1])
+                # patch = Polypatch(self.boundary, edgecolor='None', facecolor='grey', alpha=0.5, zorder=0)
+                # ax.add_patch(patch)
+                ax.plot(self.failgrid[:, 0], self.failgrid[:, 1], c='magenta', marker="s", mew=0, lw=0,
+                        ms=72 * self.inputFeature.value(), alpha=0.7, zorder=1)
                 fig.savefig(self.failDir.text(), dpi=6, transparent=True)
                 with rasopen(self.failDir.text(), mode='r+', driver='GTiff') as gtif:
-                    gtif.transform = Affine(1 / 6, 0, self.xylim[0][0], 0, -1 / 6, self.xylim[1][1])
+                    gtif.transform = Affine(1 / 6, 0, xlim[0], 0, -1 / 6, ylim[1])
                     gtif.crs = self.dialog.epsg
 
             elif self.failDir.text()[-3:] == 'wpt':
