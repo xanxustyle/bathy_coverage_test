@@ -86,7 +86,8 @@ Users can generate a test report after checking grid compliances. The report wil
 * Coverage map
 * Grid compliance map
 
-## Built With
+## Credits
+The program uses the following open source packages, as well as several packages that are mentioned and linked above.
 * [Numpy](https://numpy.org/doc/stable/reference/index.html) and [Pandas](https://pandas.pydata.org/docs/index.html) - Data structure used.
 * [PyQt5](https://doc.qt.io/qtforpython/) - UI framework used.
 * [QThreadPool](https://doc.qt.io/qt-5/qthreadpool.html) - Multi-threading framework used.
