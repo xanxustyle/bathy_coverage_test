@@ -1,5 +1,5 @@
-# CoverTest Program
-Coverage test of bathymetric data based on [International Hydrographic Organization Standards for Hydrographic Surveys (S44) Edition 6.0](https://iho.int/uploads/user/pubs/Drafts/S-44_Edition_6.0.0-Final.pdf).
+# CoverTest
+A Python program for testing coverage of bathymetric data based on [International Hydrographic Organization Standards for Hydrographic Surveys (S44) Edition 6.0](https://iho.int/uploads/user/pubs/Drafts/S-44_Edition_6.0.0-Final.pdf).
 
 ## Getting Started
 To use this program on Windows without setting up Python, download the ```build/exe.win-amd64-3.9/``` directory and launch the ```CoverTest.exe``` executable file. The executable was packed by using [cx_freeze](https://cx-freeze.readthedocs.io/en/latest/).
