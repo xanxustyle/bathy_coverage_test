@@ -38,7 +38,7 @@ The program accepts semi-processed bathymetric data (*ASCII* files with the ```.
 At startup, the CoverTest program will bring up a frontend UI that allows users to specify survey standards and view test results.
 
 <p align="center">
-<img src="screenshot.png" width="700px" title="Program Demo">
+<img src="img/screenshot.png" width="700px" title="Program Demo">
 </p>
 
 ### Test Configurations
@@ -76,7 +76,7 @@ The right plot window displays a grid compliance map with Easting in *metres* on
 
 Users can manipulate the views of dataset in the plot windows by using the navigation toolbars that are embedded below the windows. The description of each of the buttons on the toolbars is as follows:
 
-<img src="screenshot_toolbar.png" width="300">
+<img src="img/screenshot_toolbar.png" width="300">
 
 The first button from the left is the ```Home``` button, which is used to bring back the first (default) view of the data. The next two buttons are the ```Forward``` and ```Back``` buttons respectively, which are used to navigate back and forth between previously defined views.
 
