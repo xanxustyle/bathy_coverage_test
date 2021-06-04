@@ -9,7 +9,7 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtCore import pyqtSignal, pyqtSlot, QThreadPool, QRunnable, QObject
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QDialog, QDialogButtonBox
 from elkai import solve_float_matrix
-from fast_histogram import histogram2d
+from fast_histogram import histogram2d as fasthist2d
 from inpoly import inpoly2
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -95,12 +95,14 @@ class Reader(QObject):
     bin_signal = pyqtSignal(tuple)
     data_signal = pyqtSignal(tuple)
 
-    def __init__(self, feature, density, diag):
+    def __init__(self, feature, density, beam_stat, beam_deg, diag):
         super(Reader, self).__init__()
         self.feature = feature
         self.density = density
         self.diag = diag
-        self.xylim = np.array([[np.inf, np.inf], [-np.inf, -np.inf]])
+        self.beam_stat = beam_stat
+        self.beam_deg = beam_deg
+        self.xylim = np.array([[np.inf, np.inf], [-np.inf, -np.inf], [0, 0], [0, 0]])
         self.depth = [0, 0]
         self.bin = ()
         self.hist = None
@@ -111,33 +113,56 @@ class Reader(QObject):
 
     # @pyqtSlot(str)
     def readline(self, sval):
-        newdata = pd.read_csv(sval, sep=' ', usecols=[0, 1, 2]).to_numpy()
-        self.xylim[0, :] = np.minimum(self.xylim[0, :], newdata[:, :2].min(axis=0))
-        self.xylim[1, :] = np.maximum(self.xylim[1, :], newdata[:, :2].max(axis=0))
-        # start = datetime.now()
+        if self.beam_stat != 0:
+            try:
+                data = pd.read_csv(sval, sep=' ', usecols=['Easting', 'Northing', 'Depth', 'Acr Angle']).to_numpy()
+            except ValueError:
+                data = pd.read_csv(sval, sep=' ', usecols=['0', '1', '2', '3']).to_numpy()
+        else:
+            try:
+                data = pd.read_csv(sval, sep=' ', usecols=['Easting', 'Northing', 'Depth']).to_numpy()
+            except ValueError:
+                data = pd.read_csv(sval, sep=' ', usecols=['0', '1', '2']).to_numpy()
+
+        self.xylim[2, :] = data[:, :2].min(axis=0)
+        self.xylim[3, :] = data[:, :2].max(axis=0)
+        self.xylim[0, :] = np.minimum(self.xylim[0, :], self.xylim[2, :])
+        self.xylim[1, :] = np.maximum(self.xylim[1, :], self.xylim[3, :])
         if self.hist is None:
             self.bin = createbin(self.xylim[0, :] - self.diag, self.xylim[1, :] + self.diag, self.feature)
             self.bin_signal.emit(self.bin)
-            # self.hist = np.where(np.histogram2d(newdata[:, 0], newdata[:, 1],
-            #                                     bins=(self.bin[0], self.bin[1]))[0] >= self.density, 1, 0)
-            self.hist = np.where(histogram2d(newdata[:, 0], newdata[:, 1], bins=(self.bin[2].size, self.bin[3].size),
-                                             range=[[self.bin[0][0], self.bin[0][-1]],
-                                                    [self.bin[1][0], self.bin[1][-1]]]) >= self.density, 1, 0)
-        else:
-            # self.hist += np.where(np.hist
-            # ogram2d(newdata[:, 0], newdata[:, 1],
-            #                                      bins=(self.bin[0], self.bin[1]))[0] >= self.density, 1, 0)
-            self.hist += np.where(histogram2d(newdata[:, 0], newdata[:, 1], bins=(self.bin[2].size, self.bin[3].size),
-                                              range=[[self.bin[0][0], self.bin[0][-1]],
-                                                     [self.bin[1][0], self.bin[1][-1]]]) >= self.density, 1, 0)
-        # print(datetime.now() - start)
-        self.depth[0] = (newdata[:, 2].sum() + self.depth[0] * self.depth[1]) / (newdata.shape[0] + self.depth[1])
-        self.depth[1] += newdata.shape[0]
+            self.hist = np.zeros((self.bin[2].size, self.bin[3].size))
+
         blim = np.column_stack((np.searchsorted(self.bin[0], self.xylim[:, 0], side='right'),
                                 np.searchsorted(self.bin[1], self.xylim[:, 1], side='right')))
-        blim[0, :] -= 2
-        blim[1, :] += 2
-        self.data_signal.emit((self.hist, self.depth[0], blim))
+        blim -= 1  # -1 because searchsorted bin always +1
+        blim[[0, 2], :] -= 1  # -1 for extra 1 lower bin
+        blim[[1, 3], :] += 2  # +1 for extra 1 upper bin, +1 again for upper bin edge (also for upper limit of slicing)
+        if self.beam_stat != 0:
+            if self.beam_stat == 1:
+                good = data[:, 3] == 1
+            else:
+                good = abs(data[:, 3]) <= self.beam_deg
+            h_good = np.where(fasthist2d(data[good, 0], data[good, 1],
+                                         bins=(blim[3, 0] - blim[2, 0], blim[3, 1] - blim[2, 1]),
+                                         range=[[self.bin[0][blim[2, 0]], self.bin[0][blim[3, 0]]],
+                                                [self.bin[1][blim[2, 1]], self.bin[1][blim[3, 1]]]]
+                                         ) >= self.density, 1, 0)
+            h_bad = np.where(fasthist2d(data[~good, 0], data[~good, 1],
+                                        bins=(blim[3, 0] - blim[2, 0], blim[3, 1] - blim[2, 1]),
+                                        range=[[self.bin[0][blim[2, 0]], self.bin[0][blim[3, 0]]],
+                                               [self.bin[1][blim[2, 1]], self.bin[1][blim[3, 1]]]]
+                                        ) >= self.density, 0.5, 0)
+            self.hist[blim[2, 0]:blim[3, 0], blim[2, 1]:blim[3, 1]] += np.minimum(h_good + h_bad, 1)
+        else:
+            self.hist[blim[2, 0]:blim[3, 0], blim[2, 1]:blim[3, 1]] += np.where(
+                fasthist2d(data[:, 0], data[:, 1], bins=(blim[3, 0] - blim[2, 0], blim[3, 1] - blim[2, 1]),
+                           range=[[self.bin[0][blim[2, 0]], self.bin[0][blim[3, 0]]],
+                                  [self.bin[1][blim[2, 1]], self.bin[1][blim[3, 1]]]]) >= self.density, 1, 0)
+
+        self.depth[0] = (data[:, 2].sum() + self.depth[0] * self.depth[1]) / (data.shape[0] + self.depth[1])
+        self.depth[1] += data.shape[0]
+        self.data_signal.emit((self.hist, self.depth[0], blim[:2, :]))
 
 
 class Builder(QObject):
@@ -253,14 +278,14 @@ class Reporter(QObject):
             ax1.get_xaxis().get_major_formatter().set_scientific(False)
             ax1.get_yaxis().get_major_formatter().set_useOffset(False)
             ax1.get_yaxis().get_major_formatter().set_scientific(False)
-            cmax = int(np.max(hist))
+            cmax = int(np.max(hist) * 2)
             cmesh = ax1.imshow(hist.T, cmap=plt.get_cmap('viridis', cmax + 1), interpolation='nearest', origin='lower',
                                extent=[xybin[0][0], xybin[0][-1], xybin[1][0], xybin[1][-1]])
             ax1.set_anchor((0.8, 1))
             ax2 = fig2.add_subplot(gridspec[0, 1])
             cbar = fig2.colorbar(cmesh, cax=ax2,
-                                 ticks=np.linspace(cmax / (cmax + 1) / 2, cmax - cmax / (cmax + 1) / 2, cmax + 1))
-            cbar.ax.set_yticklabels(np.arange(cmax + 1))
+                                 ticks=np.linspace(cmax / (cmax + 1) / 4, cmax - cmax / (cmax + 1) / 4, (cmax + 1) * 2))
+            cbar.ax.set_yticklabels(np.arange(0, cmax + 1, 0.5))
             ax2.set_anchor('W')
             ax3 = fig2.add_subplot(gridspec[1, 0], xlabel='Easting [m]', ylabel='Northing [m]', title='Grid Compliance',
                                    aspect='equal')
@@ -293,7 +318,7 @@ class EpsgDialog(QDialog, Ui_Dialog):
             self.textEdit.setPlainText(self.epsg.wkt.split('"', 2)[1])
             self.buttonBox.button(QDialogButtonBox.Ok).setEnabled(True)
         except errors.CRSError:
-            self.textEdit.setPlainText('Unknown EPSG code.')
+            self.textEdit.setPlainText('EPSG code not found.')
             self.buttonBox.button(QDialogButtonBox.Ok).setEnabled(False)
 
 
@@ -323,6 +348,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.inputName.setText('Job_' + str(datetime.now())[:-16])
         self.runButton.setEnabled(False)
         self.inputDir.textChanged.connect(self.enablerun)
+        self.beamBox.currentIndexChanged.connect(self.setbeamquality)
         self.runButton.clicked.connect(self.runprogram)
         self.execButton.setEnabled(False)
         self.bounFileBrowseButton.clicked.connect(self.selectbounfile)
@@ -372,6 +398,9 @@ class Window(QMainWindow, Ui_MainWindow):
         self.plotLayout2.addWidget(self.canvas2)
         self.plotLayout2.addWidget(FigNavToolbar(self.canvas2, self.plotBox2, coordinates=True))
 
+    def setbeamquality(self):
+        self.inputBeamDeg.setEnabled(self.beamBox.currentIndex() == 2)
+
     def selectwatchdir(self):
         self.inputDir.setText(QFileDialog.getExistingDirectory(self, 'Select Line File Directory'))
 
@@ -416,10 +445,13 @@ class Window(QMainWindow, Ui_MainWindow):
         self.inputName.setEnabled(False)
         self.inputFeature.setEnabled(False)
         self.inputDensity.setEnabled(False)
+        self.beamBox.setEnabled(False)
+        self.inputBeamDeg.setEnabled(False)
         self.inputDiag.setEnabled(False)
         self.runButton.setEnabled(False)
         self.watcher = Watcher(self.inputDir.text())
-        self.reader = Reader(self.inputFeature.value(), self.inputDensity.value(), self.inputDiag.value())
+        self.reader = Reader(self.inputFeature.value(), self.inputDensity.value(), self.beamBox.currentIndex(),
+                             self.inputBeamDeg.value(), self.inputDiag.value())
         self.watcher.watch_signal.connect(self.run_reader)
         self.reader.bin_signal.connect(self.setbin)
         self.reader.data_signal.connect(self.drawmap)
@@ -439,7 +471,7 @@ class Window(QMainWindow, Ui_MainWindow):
         if self.failGroup.isChecked() and self.failOutCheckbox.isChecked() and self.failDir.text()[-3:] == 'tif':
             self.dialog.exec()
             if self.dialog.result() == 0:
-                self.consoleBox.appendPlainText('Try again. No EPSG code was given.')
+                self.consoleBox.appendPlainText('Try again. EPSG code not found.')
                 self.enabletask()
                 return
         if self.bounGroup.isChecked():
@@ -538,29 +570,29 @@ class Window(QMainWindow, Ui_MainWindow):
             self.ax2.set_ylim(self.bin[1][self.blim[0, 1]], self.bin[1][self.blim[1, 1]])
             self.ax1.set_title('Coverage Map of {} Lines'.format(self.line_no))
             if self.cmesh is None:
-                cmax = int(np.max(self.hist))
+                cmax = int(np.max(self.hist) * 2)
                 self.cmesh = self.ax1.imshow(
                     self.hist[self.blim[0, 0]:self.blim[1, 0], self.blim[0, 1]:self.blim[1, 1]].T,
                     cmap=plt.get_cmap('viridis', cmax + 1), interpolation='nearest', origin='lower',
                     extent=[self.bin[0][self.blim[0, 0]], self.bin[0][self.blim[1, 0]],
                             self.bin[1][self.blim[0, 1]], self.bin[1][self.blim[1, 1]]])
                 self.cbar = self.fig1.colorbar(
-                    self.cmesh, ticks=np.linspace(cmax / (cmax + 1) / 2, cmax - cmax / (cmax + 1) / 2, cmax + 1),
+                    self.cmesh, ticks=np.linspace(cmax / (cmax + 1) / 4, cmax - cmax / (cmax + 1) / 4, (cmax + 1) * 2),
                     aspect=50, location='bottom')
-                self.cbar.ax.set_xticklabels(np.arange(cmax + 1))
+                self.cbar.ax.set_xticklabels(np.arange(0, cmax + 1, 0.5))
                 self.ax1.set_position((0.07, 0.1, 0.9, 0.85))
                 self.ax1.set_anchor('C')
                 self.cbar.ax.set_position((0.07, 0.03, 0.9, 0.018))
             else:
-                cmax = int(np.max(self.hist))
+                cmax = int(np.max(self.hist) * 2)
                 self.cmesh.set_data(self.hist[self.blim[0, 0]:self.blim[1, 0], self.blim[0, 1]:self.blim[1, 1]].T)
                 self.cmesh.set_extent([self.bin[0][self.blim[0, 0]], self.bin[0][self.blim[1, 0]],
                                        self.bin[1][self.blim[0, 1]], self.bin[1][self.blim[1, 1]]])
                 self.cmesh.set_cmap(plt.get_cmap('viridis', cmax + 1))
                 self.cmesh.autoscale()
-                self.cbar.set_ticks(np.linspace(cmax / (cmax + 1) / 2, cmax - cmax / (cmax + 1) / 2, cmax + 1))
+                self.cbar.set_ticks(np.linspace(cmax / (cmax + 1) / 4, cmax - cmax / (cmax + 1) / 4, (cmax + 1) * 2))
                 self.cbar.draw_all()
-                self.cbar.ax.set_xticklabels(np.arange(cmax + 1))
+                self.cbar.ax.set_xticklabels(np.arange(0, cmax + 1, 0.5))
             self.canvas1.draw()
             self.consoleBox.appendPlainText('Coverage map updated.')
 
