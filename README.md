@@ -38,7 +38,7 @@ The program accepts semi-processed bathymetric data (*ASCII* files with the ```.
 At startup, the CoverTest program will bring up a frontend UI that allows users to specify survey standards and view test results.
 
 <p align="center">
-<img src="img/screenshot.png" width="700px" title="Program Demo">
+<img src="img/screenshot_ui.png" width="700px" title="Program Demo">
 </p>
 
 ### Test Configurations
