@@ -240,10 +240,13 @@ class Planner(QObject):
             count += neighbor_max
         waypt = np.row_stack(waypt)
 
-        dist_mat = distance_matrix(waypt, waypt, threshold=1e10)
-        path = solve_float_matrix(dist_mat, runs=run_iter)
-        path.append(0)
-        self.plan_signal.emit(waypt[path])
+        if waypt.shape[0] > 1:
+            dist_mat = distance_matrix(waypt, waypt, threshold=1e10)
+            path = solve_float_matrix(dist_mat, runs=run_iter)
+            path.append(0)
+            self.plan_signal.emit(waypt[path])
+        else:
+            self.plan_signal.emit(waypt)
 
 
 class Reporter(QObject):
