@@ -117,12 +117,12 @@ class Reader(QObject):
             try:
                 data = pd.read_csv(sval, sep=' ', usecols=['Easting', 'Northing', 'Depth', 'Acr Angle']).to_numpy()
             except ValueError:
-                data = pd.read_csv(sval, sep=' ', usecols=['0', '1', '2', '3']).to_numpy()
+                data = pd.read_csv(sval, sep=' ', usecols=[0, 1, 2, 3]).to_numpy()
         else:
             try:
                 data = pd.read_csv(sval, sep=' ', usecols=['Easting', 'Northing', 'Depth']).to_numpy()
             except ValueError:
-                data = pd.read_csv(sval, sep=' ', usecols=['0', '1', '2']).to_numpy()
+                data = pd.read_csv(sval, sep=' ', usecols=[0, 1, 2]).to_numpy()
 
         self.xylim[2, :] = data[:, :2].min(axis=0)
         self.xylim[3, :] = data[:, :2].max(axis=0)
@@ -606,7 +606,6 @@ class Window(QMainWindow, Ui_MainWindow):
         # noinspection PyArgumentList
         self.linepatch.set_xy(boun_xy)
         self.canvas2.draw()
-
         if self.failGroup.isChecked():
             self.run_checker()
         else:
@@ -674,7 +673,6 @@ class Window(QMainWindow, Ui_MainWindow):
                 wptfile.close()
             else:
                 np.savetxt(self.ppDir.text(), waypt, fmt='%.3f', header='Easting Northing', comments='')
-
         self.enabletask()
 
     @pyqtSlot()
