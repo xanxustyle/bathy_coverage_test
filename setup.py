@@ -20,7 +20,7 @@ if sys.platform == 'win32':
 
 setup(
     name='CoverTest',
-    version='0.2',
+    version='0.3',
     description='cx_Freeze exe',
     options={'build_exe': build_exe_options},
     executables=[Executable('main.py', base=base, target_name='CoverTest')],

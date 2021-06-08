@@ -138,6 +138,7 @@ class Reader(QObject):
         blim -= 1  # -1 because searchsorted bin always +1
         blim[[0, 2], :] -= 1  # -1 for extra 1 lower bin
         blim[[1, 3], :] += 2  # +1 for extra 1 upper bin, +1 again for upper bin edge (also for upper limit of slicing)
+        blim = np.maximum(blim, 0)
         if self.beam_stat != 0:
             if self.beam_stat == 1:
                 good = data[:, 3] == 1
