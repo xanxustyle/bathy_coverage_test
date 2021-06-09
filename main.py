@@ -349,6 +349,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.boundary = None
         self.failgrid = None
 
+        self.toolGroup.setCurrentIndex(0)
         self.inputDirBrowseButton.clicked.connect(self.selectwatchdir)
         self.inputName.setText('Job_' + str(datetime.now())[:-16])
         self.runButton.setEnabled(False)
@@ -445,6 +446,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.enabletask()
 
     def runprogram(self):
+        self.toolGroup.setCurrentIndex(1)
         self.inputDirBrowseButton.setEnabled(False)
         self.inputDir.setEnabled(False)
         self.inputName.setEnabled(False)
