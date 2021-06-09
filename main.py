@@ -138,7 +138,8 @@ class Reader(QObject):
         blim -= 1  # -1 because searchsorted bin always +1
         blim[[0, 2], :] -= 1  # -1 for extra 1 lower bin
         blim[[1, 3], :] += 2  # +1 for extra 1 upper bin, +1 again for upper bin edge (also for upper limit of slicing)
-        blim = np.maximum(blim, 0)
+        blim[:, 0] = np.clip(blim[:, 0], 0, self.bin[0].size - 1)
+        blim[:, 1] = np.clip(blim[:, 1], 0, self.bin[1].size - 1)
         if self.beam_stat != 0:
             if self.beam_stat == 1:
                 good = data[:, 3] == 1
@@ -567,6 +568,11 @@ class Window(QMainWindow, Ui_MainWindow):
         self.hist, self.depth, self.blim = tup
         self.line_no += 1
         self.consoleBox.appendPlainText('{} lines loaded.'.format(self.line_no))
+        if np.any(self.blim == 0) or \
+                np.any(self.blim[:, 0] >= self.bin[0].size - 1) or np.any(self.blim[:, 1] >= self.bin[0].size - 1):
+            self.consoleBox.appendPlainText('WARNING: Survey size exceeds the given Max Diagonal size. '
+                                            'Coverage map may not be calculated correctly. '
+                                            'Try re-running the program with higher Max Diagonal.')
         if self.line_no >= self.prewatch_len:
             self.ax1.set_xlim(self.bin[0][self.blim[0, 0]], self.bin[0][self.blim[1, 0]])
             self.ax1.set_ylim(self.bin[1][self.blim[0, 1]], self.bin[1][self.blim[1, 1]])
