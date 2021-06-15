@@ -138,7 +138,8 @@ class Reader(QObject):
         blim -= 1  # -1 because searchsorted bin always +1
         blim[[0, 2], :] -= 1  # -1 for extra 1 lower bin
         blim[[1, 3], :] += 2  # +1 for extra 1 upper bin, +1 again for upper bin edge (also for upper limit of slicing)
-        blim = np.maximum(blim, 0)
+        blim[:, 0] = np.clip(blim[:, 0], 0, self.bin[0].size - 1)
+        blim[:, 1] = np.clip(blim[:, 1], 0, self.bin[1].size - 1)
         if self.beam_stat != 0:
             if self.beam_stat == 1:
                 good = data[:, 3] == 1
@@ -161,7 +162,7 @@ class Reader(QObject):
                            range=[[self.bin[0][blim[2, 0]], self.bin[0][blim[3, 0]]],
                                   [self.bin[1][blim[2, 1]], self.bin[1][blim[3, 1]]]]) >= self.density, 1, 0)
 
-        self.depth[0] = (data[:, 2].sum() + self.depth[0] * self.depth[1]) / (data.shape[0] + self.depth[1])
+        self.depth[0] = (abs(data[:, 2]).sum() + self.depth[0] * self.depth[1]) / (data.shape[0] + self.depth[1])
         self.depth[1] += data.shape[0]
         self.data_signal.emit((self.hist, self.depth[0], blim[:2, :]))
 
@@ -214,7 +215,7 @@ class Planner(QObject):
         swath_radius = tup[1] * np.tan(np.deg2rad(tup[2] / 2))
         run_iter = tup[3]
 
-        fbin = createbin(fail_xy.min(axis=0), fail_xy.max(axis=0), swath_radius / 2)
+        fbin = createbin(fail_xy.min(axis=0), fail_xy.max(axis=0), swath_radius / 5)
         fail_tree = KDTree(fail_xy)
         fail_grp = np.column_stack((np.searchsorted(fbin[0], fail_xy[:, 0], side='right'),
                                     np.searchsorted(fbin[1], fail_xy[:, 1], side='right')))
@@ -348,6 +349,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.boundary = None
         self.failgrid = None
 
+        self.toolGroup.setCurrentIndex(0)
         self.inputDirBrowseButton.clicked.connect(self.selectwatchdir)
         self.inputName.setText('Job_' + str(datetime.now())[:-16])
         self.runButton.setEnabled(False)
@@ -385,7 +387,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.plotLayout1.addWidget(FigNavToolbar(self.canvas1, self.plotBox1, coordinates=True))
         self.fig2 = Figure()
         self.ax2 = self.fig2.add_axes((0.07, 0.1, 0.9, 0.85), xlabel='Easting [m]', ylabel='Northing [m]',
-                                      title='Grid Compliance', aspect='equal',
+                                      title='Grid Compliance Map', aspect='equal',
                                       xticks=[], yticks=[], rasterized=True)
         self.ax2.set_anchor('C')
         self.linepatch = Polypatch([[0, 0], [0, 0]], edgecolor='black', facecolor='None', lw=0.5, zorder=0)
@@ -444,6 +446,7 @@ class Window(QMainWindow, Ui_MainWindow):
         self.enabletask()
 
     def runprogram(self):
+        self.toolGroup.setCurrentIndex(1)
         self.inputDirBrowseButton.setEnabled(False)
         self.inputDir.setEnabled(False)
         self.inputName.setEnabled(False)
@@ -567,6 +570,11 @@ class Window(QMainWindow, Ui_MainWindow):
         self.hist, self.depth, self.blim = tup
         self.line_no += 1
         self.consoleBox.appendPlainText('{} lines loaded.'.format(self.line_no))
+        if np.any(self.blim == 0) or \
+                np.any(self.blim[:, 0] >= self.bin[0].size - 1) or np.any(self.blim[:, 1] >= self.bin[0].size - 1):
+            self.consoleBox.appendPlainText('WARNING: Survey size exceeds the given Max Diagonal size. '
+                                            'Coverage map may not be calculated correctly. '
+                                            'Try re-running the program with higher Max Diagonal.')
         if self.line_no >= self.prewatch_len:
             self.ax1.set_xlim(self.bin[0][self.blim[0, 0]], self.bin[0][self.blim[1, 0]])
             self.ax1.set_ylim(self.bin[1][self.blim[0, 1]], self.bin[1][self.blim[1, 1]])
@@ -604,9 +612,10 @@ class Window(QMainWindow, Ui_MainWindow):
     def drawbound(self, boun_xy):
         self.consoleBox.insertPlainText('Done.')
         self.boundary = boun_xy
-        # noinspection PyArgumentList
         self.linepatch.set_xy(boun_xy)
         self.canvas2.draw()
+        # self.ax1.plot(boun_xy[:,0], boun_xy[:,1], c='red', lw=2, zorder=1)
+        # self.canvas1.draw()
         if self.failGroup.isChecked():
             self.run_checker()
         else:
@@ -621,7 +630,6 @@ class Window(QMainWindow, Ui_MainWindow):
         failrate = min(failarea / bounarea, 1)
         self.failtext.set_text(
             'Compliant Grids (Green): {:.2%}\nNon-compliant Grids (Red): {:.2%}'.format(1 - failrate, failrate))
-        # noinspection PyArgumentList
         self.polypatch.set_xy(self.boundary)
         self.failplot.set_data(fail_xy[:, 0], fail_xy[:, 1])
         self.canvas2.draw()
@@ -687,6 +695,7 @@ if __name__ == '__main__':
     font = QFont()
     font.setPointSize(8)
     app.setFont(font)
+    app.setStyle('Fusion')
     win = Window()
     win.show()
     sys.exit(app.exec_())
