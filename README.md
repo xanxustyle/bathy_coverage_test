@@ -34,8 +34,9 @@ The software accepts semi-processed bathymetric data (*ASCII* files with the ```
 * First column: Easting in *metres*
 * Second column: Northing in *metres*
 * Third column: Depth in *metres*
+* Fourth column (optional): Acr Angle in *degrees* OR Beam Detection Type
 
-At startup, the software will bring up a frontend UI that allows users to specify survey standards and view test results.
+At startup, the software will bring up a frontend UI that allows users to specify survey standards, select analysis and view analysis results.
 
 <p align="center">
 <img src="img/screenshot.png" width="700px" title="Program Demo">
@@ -50,9 +51,14 @@ The ```Configurations``` section allows users to select an input file directory 
 
 * ```Feature Size``` is the required size of feature detection in *metres*. It will be used as the grid size for constructing the bathymetric coverage map. The default value is 1.0 metre.
 
-* ```Minimum Data Density``` is the minimum number of datapoints required by every grid. Grids with datapoints less than this parameter will be rejected in the bathymetric coverage. The default value is 1.
+* ```Min. Data Density``` is the minimum number of datapoints required by every grid. Grids with datapoints less than this parameter will be rejected in the bathymetric coverage. The default value is 1.
 
-* ```Approx. Survey Diagonal``` is the approximated (maximum) diagonal size of the survey area. It will be used for constructing the grids of the bathymetric coverage map. The given diagonal size must be larger than the actual size to construct the coverage map correctly (but excessive diagonal size will decrease the software performance). The default value is 1000 metres.
+* ```Beam Quality``` is an optional data quality classifier for classifying data based on the beam quality. Good data has a contribution of 100% coverage, while bad data contributes to 50% coverage. The drop-down list has 3 options:
+  * ```N/A``` disables the quality classifier.
+  * ```Status-based``` classifies the data based on types of beam detection used (amplitude/phase).
+  * ```Angle-based``` classifies the data based on beam angle (users can select the maximum beam angle of good data. Default is 45°).
+
+* ```Max. Diagonal``` is the maximum (approximated) diagonal size of the survey area. It will be used for constructing the grids of the bathymetric coverage map. The given diagonal size must be larger than the actual size to construct the coverage map correctly (but excessive diagonal size will decrease the software performance). The default value is 1000 metres.
 
 Clicking on the ```Run Program``` button will start running the software and prevent further changes to the selected directory and configurations. A restart will be required to make any changes. When the software is running, existing and newly added files in the selected directory will be read to compute a bathymatric coverage map. The software uses [Binary Search](https://github.com/astrofrog/fast-histogram) to bin the data into the grids of the coverage map. After reading the first input file, the left plot window will display the coverage map.
 
@@ -95,6 +101,7 @@ Users can generate a test report after checking grid compliances. The report wil
 * Feature size requirement
 * Bathymetric coverage requirement
 * Minimum data density
+* Selected data quality classifier
 * Total number of lines processed
 * Coverage map
 * Grid compliance map
