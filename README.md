@@ -45,7 +45,7 @@ At startup, the software will bring up a frontend UI that allows users to specif
 ### Test Configurations
 The ```Configurations``` section allows users to select an input file directory and specify the required survey standards. 
 
-* ```Line File Directory``` is where the input files are stored. The software uses the [watchdog](https://pythonhosted.org/watchdog/) module to monitor file system events in the selected directory. The software will automatically check for existing and newly added ```.txt``` files in the selected directory.
+* ```Line File Directory``` should be pointed to where the input files are stored. The software uses the [watchdog](https://pythonhosted.org/watchdog/) module to monitor file system events in the selected directory. The software will automatically check for existing and newly added ```.txt``` files in the selected directory.
 
 * ```Job Name``` parameter allows users to set the name recorded in the test report. It does not affect the test results. By default, it is named after the current date.
 
@@ -84,15 +84,15 @@ Users can manipulate the views of dataset in the plot windows by using the navig
 
 <img src="img/screenshot_toolbar.png" width="300">
 
-The first button from the left is the ```Home``` button, which is used to bring back the first (default) view of the data. The next two buttons are the ```Forward``` and ```Back``` buttons respectively, which are used to navigate back and forth between previously defined views.
+* The first button from the left is the ```Home``` button, which is used to bring back the first (default) view of the data. The next two buttons are the ```Forward``` and ```Back``` buttons respectively, which are used to navigate back and forth between previously defined views.
 
-The fourth is the ```Pan/Zoom``` button. This button has two modes: pan and zoom. Click this button to activate panning and zooming mode, then put the mouse somewhere over an axes. Press the left mouse button and hold it to pan the figure and drag it to a new position. Press and hold the right mouse button to zoom. The x axis will be zoomed in proportionately to the rightward movement and zoomed out proportionately to the leftward movement. The same is true for the y axis and up/down motions.
+* The fourth is the ```Pan/Zoom``` button. This button has two modes: pan and zoom. Click this button to activate panning and zooming mode, then put the mouse somewhere over an axes. Press the left mouse button and hold it to pan the figure and drag it to a new position. Press and hold the right mouse button to zoom. The x axis will be zoomed in proportionately to the rightward movement and zoomed out proportionately to the leftward movement. The same is true for the y axis and up/down motions.
 
-The fifth is the ```Zoom-to-rectangle``` button. Click this button to activate zooming mode. Put the mouse somewhere over an axes and press a mouse button. Define a rectangular region by dragging the mouse while holding the button to a new location. When using the left mouse button, the axes view limits will be zoomed to the defined region. When using the right mouse button, the axes view limits will be zoomed out, placing the original axes in the defined region.
+* The fifth is the ```Zoom-to-rectangle``` button. Click this button to activate zooming mode. Put the mouse somewhere over an axes and press a mouse button. Define a rectangular region by dragging the mouse while holding the button to a new location. When using the left mouse button, the axes view limits will be zoomed to the defined region. When using the right mouse button, the axes view limits will be zoomed out, placing the original axes in the defined region.
 
-The second to last is the ```Subplot-configuration``` button. Use this tool to configure the appearance of the plot by adjusting the left, right, top, or bottom space of the plot, or the space between the subplot rows or columns. The next to last is the ```Figure-option``` button. Use this tool to adjust the colors, line styles, markers in the plot.
+* The second to last is the ```Subplot-configuration``` button. Use this tool to configure the appearance of the plot by adjusting the left, right, top, or bottom space of the plot, or the space between the subplot rows or columns. The next to last is the ```Figure-option``` button. Use this tool to adjust the colors, line styles, markers in the plot.
 
-The last button is the ```Save``` button. Click this button to launch a file save dialog. Figures can be saved with the following extensions: ```.png```, ```.jpg```, ```.tif```, ```.ps```, ```.eps```, ```.svg```, ```.pgf``` and ```.pdf```.
+* The last button is the ```Save``` button. Click this button to launch a file save dialog. Figures can be saved with the following extensions: ```.png```, ```.jpg```, ```.tif```, ```.ps```, ```.eps```, ```.svg```, ```.pgf``` and ```.pdf```.
 
 ### Test Reporting
 Users can generate a test report after checking grid compliances. The report will contain the following information:
